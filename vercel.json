@@ -12,10 +12,9 @@
       "use": "@vercel/node"
     }
   ],
-  "routes": [
-    { "src": "/api/(.*)", "dest": "/api/$1" },
-    { "src": "/(.*\\.(?:js|css|png|jpg|jpeg|gif|svg|ico|webp|json|txt|woff|woff2|map))", "dest": "/$1" },
-    { "src": "/(.*)", "dest": "/index.html" }
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "/api/$1" },
+    { "source": "/[^.]*", "destination": "/index.html" }
   ]
 }
 
