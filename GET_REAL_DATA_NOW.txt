@@ -1,0 +1,61 @@
+╔══════════════════════════════════════════════════════════════╗
+║                                                              ║
+║        ✅ REAL STOCK DATA IS NOW BUILT-IN (YAHOO) ✅        ║
+║                                                              ║
+╚══════════════════════════════════════════════════════════════╝
+
+No API keys. No extra services. FinanceCS now pulls every quote and
+price chart straight from **Yahoo Finance** using rotating CORS-safe
+proxies.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🔌 WHAT YOU NEED TO DO
+
+1. Run the app: `npm run dev -- --port 3001`
+2. Open `http://localhost:3001`
+3. Go to **Portfolio → Active Positions**
+4. Click any stock row → the chart will load real Yahoo data
+
+That's it. There are no `.env.local` entries or paid providers anymore.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🔍 HOW TO VERIFY IT'S REAL
+
+1. Click a holding → look at the “Source: Yahoo Finance” note above
+   the chart.
+2. Compare with https://finance.yahoo.com/ to confirm prices match.
+3. Open DevTools (F12) → Network tab → you’ll see calls to
+   `query1.finance.yahoo.com`.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🛠️  TROUBLESHOOTING
+
+- **Chart stays empty** → check the browser console for proxy errors.
+  Some corporate/VPN networks block public proxies. Edit
+  `services/yahooFinanceService.ts` and add your own proxy endpoint if
+  needed.
+- **Dates look weird** → Yahoo occasionally caches aggressively. Use a
+  hard refresh (Ctrl+Shift+R) to bust the cache.
+- **Need offline demo data?** → Temporarily disable the fetch call and
+  feed your own static data (instructions in `REAL_DATA_SETUP.md`).
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📁 `.env.local` QUICK TEMPLATE
+
+```
+VITE_GEMINI_API_KEY=your_optional_gemini_key
+# Firebase overrides go here only if you want to change the default
+# cloud project. No stock-market API keys are required anymore.
+```
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Need a deeper dive? Read `REAL_DATA_SETUP.md` for the Yahoo-only
+pipeline plus proxy customization tips.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
