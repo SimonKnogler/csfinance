@@ -192,6 +192,7 @@ interface ApiCryptoPriceResponse {
   currency: string;
   timestamp: number;
   change24h?: number;
+  changePercent?: number;
   source?: string;
 }
 
@@ -233,7 +234,7 @@ const fetchCryptoQuoteFromApi = async (symbol: string): Promise<StockQuote> => {
   const data = await fetchFromApi<ApiCryptoPriceResponse>('/api/crypto-price', { symbol: apiSymbol });
   return {
     price: Number(data.price),
-    changePercent: Number(data.change24h ?? 0),
+    changePercent: Number(data.changePercent ?? data.change24h ?? 0),
     name: data.symbol || symbol,
     currency: (data.currency || 'EUR').toUpperCase(),
     exchange: 'CoinGecko',
