@@ -109,76 +109,111 @@ export const Portfolio: React.FC<PortfolioProps> = ({ privacy }) => {
         return;
       }
       
-      // Fast approach: use current snapshot, fetch real MSCI data
-      const now = Date.now();
-      const points: any[] = [];
-      
-      const intervals: Record<string, { count: number; step: number }> = {
-        '1D': { count: 24, step: 3600 * 1000 },
-        '1W': { count: 7, step: 86400 * 1000 },
-        '1M': { count: 30, step: 86400 * 1000 },
-        '6M': { count: 26, step: 7 * 86400 * 1000 },
-        '1Y': { count: 52, step: 7 * 86400 * 1000 },
-        'ALL': { count: 100, step: 7 * 86400 * 1000 },
-      };
-      
-      const config = intervals[timeRange] || intervals['1M'];
-      const startTime = now - (config.count * config.step);
-      
-      // Fetch real MSCI World data (using URTH ETF as proxy)
-      let msciData: any[] = [];
       try {
-        const msciResult = await fetchHistoricalPrices('URTH', timeRange);
-        msciData = msciResult.data || [];
-      } catch (e) {
-        console.warn('Failed to fetch MSCI data:', e);
-      }
-      
-      const msciBaseline = msciData.length > 0 ? msciData[0].price : 100;
-      
-      for (let i = 0; i <= config.count; i++) {
-        const timestamp = startTime + (i * config.step);
-        const date = new Date(timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        // Fetch real historical data for all holdings + MSCI in parallel
+        const allSymbols = [...holdings.map(h => h.symbol), 'URTH']; // URTH = MSCI World ETF
+        const historyPromises = allSymbols.map(symbol => 
+          fetchHistoricalPrices(symbol, timeRange)
+            .then(result => ({ symbol, data: result.data }))
+            .catch(err => {
+              console.warn(`Failed to fetch ${symbol}:`, err);
+              return { symbol, data: [] };
+            })
+        );
         
-        const prices: Record<string, number> = {};
-        let meValue = 0;
-        let carolinaValue = 0;
+        const allHistory = await Promise.all(historyPromises);
+        const historyMap = new Map(allHistory.map(h => [h.symbol, h.data]));
         
-        holdings.forEach(h => {
-          prices[h.symbol] = h.currentPrice;
-          const value = h.shares * h.currentPrice;
-          if (h.owner === PortfolioOwner.ME) {
-            meValue += value;
-          } else if (h.owner === PortfolioOwner.CAROLINA) {
-            carolinaValue += value;
+        // Get MSCI data
+        const msciData = historyMap.get('URTH') || [];
+        const msciBaseline = msciData.length > 0 ? msciData[0].price : 100;
+        
+        // Build timestamp map from all holdings
+        const timestampMap = new Map<number, { date: string; pricesBySymbol: Map<string, number> }>();
+        
+        holdings.forEach(holding => {
+          const data = historyMap.get(holding.symbol) || [];
+          data.forEach(point => {
+            if (!timestampMap.has(point.timestamp)) {
+              timestampMap.set(point.timestamp, {
+                date: point.date,
+                pricesBySymbol: new Map(),
+              });
+            }
+            timestampMap.get(point.timestamp)!.pricesBySymbol.set(holding.symbol, point.price);
+          });
+        });
+        
+        // Add MSCI timestamps
+        msciData.forEach(point => {
+          if (!timestampMap.has(point.timestamp)) {
+            timestampMap.set(point.timestamp, {
+              date: point.date,
+              pricesBySymbol: new Map(),
+            });
           }
         });
         
-        const total = meValue + carolinaValue;
-        
-        // Find closest MSCI data point
-        let msciPrice = msciBaseline;
-        if (msciData.length > 0) {
-          const ratio = i / config.count;
-          const msciIndex = Math.floor(ratio * (msciData.length - 1));
-          msciPrice = msciData[msciIndex]?.price || msciBaseline;
+        const sortedTimestamps = Array.from(timestampMap.keys()).sort((a, b) => a - b);
+        if (!sortedTimestamps.length) {
+          if (!cancelled) setHistoryData([]);
+          return;
         }
         
-        points.push({
-          date,
-          Me: meValue,
-          Carolina: carolinaValue,
-          Total: total,
-          MSCI: msciPrice,
-          msciBaseline,
-          prices,
-        });
-      }
-      
-      if (!cancelled) {
-        setHistoryData(points);
+        // Track last known price for each symbol (forward fill gaps)
+        const lastKnownPrices = new Map<string, number>();
+        
+        const points = sortedTimestamps.map(timestamp => {
+          const { date, pricesBySymbol } = timestampMap.get(timestamp)!;
+          const prices: Record<string, number> = {};
+          let meValue = 0;
+          let carolinaValue = 0;
+          
+          holdings.forEach(holding => {
+            let price = pricesBySymbol.get(holding.symbol);
+            if (price !== undefined) {
+              lastKnownPrices.set(holding.symbol, price);
+            } else {
+              price = lastKnownPrices.get(holding.symbol);
+            }
+            
+            if (price !== undefined) {
+              prices[holding.symbol] = price;
+              const value = holding.shares * price;
+              if (holding.owner === PortfolioOwner.ME) {
+                meValue += value;
+              } else if (holding.owner === PortfolioOwner.CAROLINA) {
+                carolinaValue += value;
+              }
+            }
+          });
+          
+          const total = meValue + carolinaValue;
+          
+          // Get MSCI price for this timestamp
+          const msciPoint = msciData.find(p => p.timestamp === timestamp);
+          const msciPrice = msciPoint?.price || msciBaseline;
+          
+          return {
+            date,
+            Me: meValue,
+            Carolina: carolinaValue,
+            Total: total,
+            MSCI: msciPrice,
+            msciBaseline,
+            prices,
+          };
+        }).filter(p => p.Total > 0);
+        
+        if (!cancelled) {
+          setHistoryData(points);
+        }
+      } catch (error) {
+        console.error('Failed to load portfolio history:', error);
+        if (!cancelled) setHistoryData([]);
       }
     };
+    
     loadPortfolioHistory();
     return () => {
       cancelled = true;
