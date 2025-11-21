@@ -235,9 +235,9 @@ const fetchCryptoQuoteFromApi = async (symbol: string): Promise<StockQuote> => {
   return {
     price: Number(data.price),
     changePercent: Number(data.changePercent ?? data.change24h ?? 0),
-    name: data.symbol || symbol,
+    name: data.name || data.symbol || symbol,
     currency: (data.currency || 'EUR').toUpperCase(),
-    exchange: 'CoinGecko',
+    exchange: data.exchange || data.source || 'Binance',
     timestamp: data.timestamp || Date.now(),
   };
 };

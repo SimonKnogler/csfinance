@@ -1,33 +1,7 @@
-const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36';
-
 const sendJSON = (res, status, payload) => {
   res.statusCode = status;
   res.setHeader('Content-Type', 'application/json');
   res.end(JSON.stringify(payload));
-};
-
-const COINGECKO_IDS = {
-  BTC: 'bitcoin',
-  ETH: 'ethereum',
-  USDT: 'tether',
-  BNB: 'binancecoin',
-  USDC: 'usd-coin',
-  XRP: 'ripple',
-  ADA: 'cardano',
-  DOGE: 'dogecoin',
-  SOL: 'solana',
-  DOT: 'polkadot',
-  MATIC: 'matic-network',
-  LTC: 'litecoin',
-  AVAX: 'avalanche-2',
-  LINK: 'chainlink',
-  UNI: 'uniswap',
-  ATOM: 'cosmos',
-  XLM: 'stellar',
-  ALGO: 'algorand',
-  VET: 'vechain',
-  ICP: 'internet-computer',
-  ETC: 'ethereum-classic',
 };
 
 const toYahooSymbol = (symbol) => {
@@ -36,89 +10,81 @@ const toYahooSymbol = (symbol) => {
   return `${upper}-USD`;
 };
 
-const fetchFromYahoo = async (symbol) => {
-  const chartUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=1d`;
-  const chartResponse = await fetch(chartUrl, {
-    headers: {
-      'User-Agent': USER_AGENT,
-      'Accept': 'application/json',
-    },
-  });
+const fetchFromBinance = async (symbol) => {
+  const base = symbol.toUpperCase().replace('-USD', '');
+  const pair = `${base}USDT`;
+  const tickerUrl = `https://api.binance.com/api/v3/ticker/24hr?symbol=${pair}`;
 
-  if (!chartResponse.ok) {
-    throw new Error(`Yahoo chart request failed: ${chartResponse.status}`);
+  const tickerResponse = await fetch(tickerUrl, { headers: { Accept: 'application/json' } });
+
+  if (!tickerResponse.ok) {
+    throw new Error(`Binance ticker request failed: ${tickerResponse.status}`);
   }
 
-  const chartJson = await chartResponse.json();
-  const result = chartJson?.chart?.result?.[0];
-  if (!result) {
-    throw new Error('Yahoo chart returned no result');
+  const ticker = await tickerResponse.json();
+  if (!ticker || typeof ticker.lastPrice === 'undefined') {
+    throw new Error('Binance ticker returned no data');
   }
 
-  const price = result.meta?.regularMarketPrice;
-  if (typeof price !== 'number') {
-    throw new Error('Yahoo chart returned invalid price');
-  }
+  const priceUSDT = Number(ticker.lastPrice);
+  const changePercent = Number(ticker.priceChangePercent ?? 0);
+  const exchange = ticker.lastId ? 'Binance' : 'Binance';
 
-  const quoteUrl = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(symbol)}`;
-  const quoteResponse = await fetch(quoteUrl, {
-    headers: {
-      'User-Agent': USER_AGENT,
-      'Accept': 'application/json',
-    },
-  });
-
-  let changePercent = 0;
-  let name = symbol.toUpperCase();
-  let exchange = result.meta?.exchangeName || '';
-
-  if (quoteResponse.ok) {
-    const quoteJson = await quoteResponse.json();
-    const quote = quoteJson?.quoteResponse?.result?.[0];
-    if (quote) {
-      changePercent = Number(quote.regularMarketChangePercent ?? 0);
-      name = quote.longName || quote.shortName || name;
-      exchange = quote.fullExchangeName || exchange;
+  // Convert USDT to EUR using EURUSDT pair (1 EUR in USDT)
+  let price = priceUSDT;
+  let currency = 'USDT';
+  try {
+    const eurTicker = await fetch('https://api.binance.com/api/v3/ticker/price?symbol=EURUSDT', { headers: { Accept: 'application/json' } });
+    if (eurTicker.ok) {
+      const { price: eurPrice } = await eurTicker.json();
+      const eurUsdt = Number(eurPrice);
+      if (eurUsdt > 0) {
+        price = priceUSDT / eurUsdt;
+        currency = 'EUR';
+      }
     }
+  } catch (error) {
+    // silently fall back to USDT
   }
 
   return {
     symbol: symbol.toUpperCase(),
     price,
-    currency: (result.meta?.currency || 'USD').toUpperCase(),
+    currency,
     timestamp: Date.now(),
     changePercent,
-    exchange: exchange || 'Yahoo Finance',
-    name,
-    source: 'Yahoo Finance',
+    exchange,
+    name: base,
+    source: 'Binance',
   };
 };
 
-const fetchFromCoinGecko = async (symbol) => {
+const fetchFromCryptoCompare = async (symbol) => {
   const base = symbol.toUpperCase().replace('-USD', '');
-  const coinGeckoId = COINGECKO_IDS[base] || symbol.toLowerCase();
-  const url = `https://api.coingecko.com/api/v3/simple/price?ids=${coinGeckoId}&vs_currencies=eur&include_24hr_change=true`;
+  const url = `https://min-api.cryptocompare.com/data/pricemultifull?fsyms=${base}&tsyms=EUR`;
 
   const response = await fetch(url, { headers: { Accept: 'application/json' } });
   if (!response.ok) {
-    throw new Error(`CoinGecko request failed: ${response.status}`);
+    throw new Error(`CryptoCompare request failed: ${response.status}`);
   }
 
   const data = await response.json();
-  const record = data[coinGeckoId];
-  if (!record?.eur) {
-    throw new Error('CoinGecko returned no price data');
+  const raw = data?.RAW?.[base]?.EUR;
+  const display = data?.DISPLAY?.[base]?.EUR;
+
+  if (!raw?.PRICE) {
+    throw new Error('CryptoCompare returned no price data');
   }
 
   return {
     symbol: symbol.toUpperCase(),
-    price: record.eur,
+    price: Number(raw.PRICE),
     currency: 'EUR',
-    timestamp: Date.now(),
-    changePercent: record.eur_24h_change || record.usd_24h_change || 0,
-    exchange: 'CoinGecko',
-    name: symbol.toUpperCase(),
-    source: 'CoinGecko',
+    timestamp: (raw.LASTUPDATE || Math.floor(Date.now() / 1000)) * 1000,
+    changePercent: Number(raw.CHANGEPCT24HOUR ?? raw.CHANGEPCTDAY ?? 0),
+    exchange: raw.MARKET || 'CryptoCompare',
+    name: display?.FROMSYMBOL || symbol.toUpperCase(),
+    source: 'CryptoCompare',
   };
 };
 
@@ -142,18 +108,18 @@ module.exports = async (req, res) => {
   const yahooSymbol = toYahooSymbol(rawSymbol);
 
   try {
-    const payload = await fetchFromCoinGecko(yahooSymbol);
+    const payload = await fetchFromBinance(yahooSymbol);
     sendJSON(res, 200, payload);
     return;
   } catch (error) {
-    console.warn(`CoinGecko crypto price failed for ${rawSymbol}:`, error.message);
+    console.warn(`Binance crypto price failed for ${rawSymbol}:`, error.message);
   }
 
   try {
-    const fallbackPayload = await fetchFromYahoo(yahooSymbol);
+    const fallbackPayload = await fetchFromCryptoCompare(yahooSymbol);
     sendJSON(res, 200, fallbackPayload);
   } catch (error) {
-    console.error(`Yahoo crypto price failed for ${yahooSymbol}:`, error.message);
+    console.error(`CryptoCompare fallback price failed for ${rawSymbol}:`, error.message);
     sendJSON(res, 500, { error: 'Failed to fetch crypto price', symbol: rawSymbol.toUpperCase() });
   }
 };
