@@ -4,39 +4,17 @@ const sendJSON = (res, status, payload) => {
   res.end(JSON.stringify(payload));
 };
 
-const SYMBOL_MAP = {
-  BTC: 'bitcoin',
-  ETH: 'ethereum',
-  USDT: 'tether',
-  BNB: 'binancecoin',
-  SOL: 'solana',
-  XRP: 'ripple',
-  USDC: 'usd-coin',
-  ADA: 'cardano',
-  DOGE: 'dogecoin',
-  AVAX: 'avalanche-2',
-  DOT: 'polkadot',
-  MATIC: 'matic-network',
-  LINK: 'chainlink',
-  UNI: 'uniswap',
-  LTC: 'litecoin',
-  ATOM: 'cosmos',
-  ETC: 'ethereum-classic',
-  XLM: 'stellar',
-  ALGO: 'algorand',
-  VET: 'vechain',
-  ICP: 'internet-computer',
+const RANGE_CONFIG = {
+  '1d': { endpoint: 'histominute', limit: 288, aggregate: 5 },     // 24h at 5m
+  '5d': { endpoint: 'histohour', limit: 120, aggregate: 1 },        // 5d hourly
+  '1mo': { endpoint: 'histohour', limit: 720, aggregate: 1 },       // 30d hourly
+  '6mo': { endpoint: 'histoday', limit: 180, aggregate: 1 },        // 6 months daily
+  '1y': { endpoint: 'histoday', limit: 365, aggregate: 1 },
+  '5y': { endpoint: 'histoday', limit: 1825, aggregate: 1 },
+  max: { endpoint: 'histoday', limit: 2000, aggregate: 1 },
 };
 
-const RANGE_DAYS = {
-  '1d': '1',
-  '5d': '5',
-  '1mo': '30',
-  '6mo': '180',
-  '1y': '365',
-  '5y': '1825',
-  max: 'max',
-};
+const toBaseSymbol = (symbol) => symbol.toUpperCase().replace('-USD', '');
 
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Credentials', 'true');
@@ -57,9 +35,17 @@ module.exports = async (req, res) => {
     return;
   }
 
-  const coinId = SYMBOL_MAP[symbol.toUpperCase()] || symbol.toLowerCase();
-  const days = RANGE_DAYS[range] || range;
-  const url = `https://api.coingecko.com/api/v3/coins/${coinId}/market_chart?vs_currency=eur&days=${days}`;
+  const base = toBaseSymbol(symbol);
+  const config = RANGE_CONFIG[range] || RANGE_CONFIG['1mo'];
+  const params = new URLSearchParams({
+    fsym: base,
+    tsym: 'EUR',
+    limit: String(config.limit),
+  });
+  if (config.aggregate && config.aggregate > 1) {
+    params.set('aggregate', String(config.aggregate));
+  }
+  const url = `https://min-api.cryptocompare.com/data/v2/${config.endpoint}?${params.toString()}`;
 
   try {
     const response = await fetch(url, {
@@ -71,29 +57,29 @@ module.exports = async (req, res) => {
       return;
     }
 
-    const data = await response.json();
-    const prices = data?.prices || [];
+    const payload = await response.json();
+    const prices = payload?.Data?.Data || [];
 
     if (!prices.length) {
       sendJSON(res, 404, { error: 'No historical data available' });
       return;
     }
 
-    const chartData = prices.map(([timestamp, price]) => ({
-      date: new Date(timestamp).toISOString().split('T')[0],
-      timestamp: Math.floor(timestamp / 1000),
-      close: price,
-      open: price,
-      high: price,
-      low: price,
-      volume: 0,
+    const chartData = prices.map(point => ({
+      date: new Date(point.time * 1000).toISOString().split('T')[0],
+      timestamp: point.time,
+      close: point.close,
+      open: point.open,
+      high: point.high,
+      low: point.low,
+      volume: point.volumefrom ?? 0,
     }));
 
     sendJSON(res, 200, {
       symbol: symbol.toUpperCase(),
       currency: 'EUR',
       data: chartData,
-      source: 'coingecko',
+      source: 'CryptoCompare',
     });
   } catch (error) {
     console.error(`Error fetching crypto history for ${symbol}:`, error);
