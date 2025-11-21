@@ -4,47 +4,57 @@ const sendJSON = (res, status, payload) => {
   res.end(JSON.stringify(payload));
 };
 
-const toYahooSymbol = (symbol) => {
-  const upper = symbol.toUpperCase();
-  if (upper.includes('-')) return upper;
-  return `${upper}-USD`;
-};
+const normalizeBase = (symbol) => symbol.toUpperCase().split('-')[0];
+const toYahooSymbol = (symbol) => `${normalizeBase(symbol)}-USD`;
 
 const fetchFromBinance = async (symbol) => {
-  const base = symbol.toUpperCase().replace('-USD', '');
-  const pair = `${base}USDT`;
-  const tickerUrl = `https://api.binance.com/api/v3/ticker/24hr?symbol=${pair}`;
+  const base = normalizeBase(symbol);
+  const pairs = [`${base}EUR`, `${base}USDT`, `${base}BUSD`];
+  let ticker = null;
+  let currency = 'EUR';
 
-  const tickerResponse = await fetch(tickerUrl, { headers: { Accept: 'application/json' } });
-
-  if (!tickerResponse.ok) {
-    throw new Error(`Binance ticker request failed: ${tickerResponse.status}`);
-  }
-
-  const ticker = await tickerResponse.json();
-  if (!ticker || typeof ticker.lastPrice === 'undefined') {
-    throw new Error('Binance ticker returned no data');
-  }
-
-  const priceUSDT = Number(ticker.lastPrice);
-  const changePercent = Number(ticker.priceChangePercent ?? 0);
-  const exchange = ticker.lastId ? 'Binance' : 'Binance';
-
-  // Convert USDT to EUR using EURUSDT pair (1 EUR in USDT)
-  let price = priceUSDT;
-  let currency = 'USDT';
-  try {
-    const eurTicker = await fetch('https://api.binance.com/api/v3/ticker/price?symbol=EURUSDT', { headers: { Accept: 'application/json' } });
-    if (eurTicker.ok) {
-      const { price: eurPrice } = await eurTicker.json();
-      const eurUsdt = Number(eurPrice);
-      if (eurUsdt > 0) {
-        price = priceUSDT / eurUsdt;
-        currency = 'EUR';
-      }
+  for (const pair of pairs) {
+    try {
+      const url = `https://api.binance.com/api/v3/ticker/24hr?symbol=${pair}`;
+      const resp = await fetch(url, { headers: { Accept: 'application/json' } });
+      if (!resp.ok) continue;
+      const json = await resp.json();
+      if (!json || typeof json.lastPrice === 'undefined') continue;
+      ticker = json;
+      if (pair.endsWith('EUR')) currency = 'EUR';
+      else if (pair.endsWith('USDT')) currency = 'USDT';
+      else currency = pair.slice(-4);
+      break;
+    } catch (error) {
+      continue;
     }
-  } catch (error) {
-    // silently fall back to USDT
+  }
+
+  if (!ticker) {
+    throw new Error('Binance ticker unavailable for symbol');
+  }
+
+  let price = Number(ticker.lastPrice);
+  const changePercent = Number(ticker.priceChangePercent ?? 0);
+  const exchange = 'Binance';
+
+  if (currency !== 'EUR') {
+    try {
+      const convertPair = currency === 'USDT' ? 'EURUSDT' : currency === 'BUSD' ? 'EURBUSD' : null;
+      if (convertPair) {
+        const convertResp = await fetch(`https://api.binance.com/api/v3/ticker/price?symbol=${convertPair}`, { headers: { Accept: 'application/json' } });
+        if (convertResp.ok) {
+          const { price: ratePrice } = await convertResp.json();
+          const rate = Number(ratePrice);
+          if (rate > 0) {
+            price = price / rate;
+            currency = 'EUR';
+          }
+        }
+      }
+    } catch (error) {
+      // leave price as is; caller can handle currency
+    }
   }
 
   return {
@@ -60,7 +70,7 @@ const fetchFromBinance = async (symbol) => {
 };
 
 const fetchFromCryptoCompare = async (symbol) => {
-  const base = symbol.toUpperCase().replace('-USD', '');
+  const base = normalizeBase(symbol);
   const url = `https://min-api.cryptocompare.com/data/pricemultifull?fsyms=${base}&tsyms=EUR`;
 
   const response = await fetch(url, { headers: { Accept: 'application/json' } });

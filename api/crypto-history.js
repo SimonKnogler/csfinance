@@ -14,8 +14,11 @@ const RANGE_CONFIG = {
   max: { interval: '1d', limit: 2000 },
 };
 
-const toBaseSymbol = (symbol) => symbol.toUpperCase().replace('-USD', '');
-const toBinancePair = (symbol) => `${toBaseSymbol(symbol)}USDT`;
+const toBaseSymbol = (symbol) => symbol.toUpperCase().split('-')[0];
+const toBinancePairs = (symbol) => {
+  const base = toBaseSymbol(symbol);
+  return [`${base}EUR`, `${base}USDT`, `${base}BUSD`];
+};
 
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Credentials', 'true');
@@ -36,47 +39,54 @@ module.exports = async (req, res) => {
     return;
   }
 
-  const pair = toBinancePair(symbol);
   const config = RANGE_CONFIG[range] || RANGE_CONFIG['1mo'];
-  const params = new URLSearchParams({
-    symbol: pair,
-    interval: config.interval,
-    limit: String(config.limit),
-  });
-
-  const url = `https://api.binance.com/api/v3/klines?${params.toString()}`;
+  const pairs = toBinancePairs(symbol);
 
   try {
-    const response = await fetch(url, {
-      headers: { Accept: 'application/json' },
-    });
-
-    if (!response.ok) {
-      sendJSON(res, response.status, { error: 'Failed to fetch data' });
-      return;
+    let candles = null;
+    let priceCurrency = 'EUR';
+    for (const pair of pairs) {
+      const params = new URLSearchParams({
+        symbol: pair,
+        interval: config.interval,
+        limit: String(config.limit),
+      });
+      const url = `https://api.binance.com/api/v3/klines?${params.toString()}`;
+      const response = await fetch(url, { headers: { Accept: 'application/json' } });
+      if (!response.ok) continue;
+      const data = await response.json();
+      if (Array.isArray(data) && data.length) {
+        candles = data;
+        if (pair.endsWith('EUR')) priceCurrency = 'EUR';
+        else if (pair.endsWith('USDT')) priceCurrency = 'USDT';
+        else priceCurrency = pair.slice(-4);
+        break;
+      }
     }
 
-    const candles = await response.json();
-
-    if (!Array.isArray(candles) || !candles.length) {
-      sendJSON(res, 404, { error: 'No historical data available' });
-      return;
+    if (!candles) {
+      throw new Error('Binance klines unavailable');
     }
 
     let eurRate = 1;
-    let currency = 'USD';
-    try {
-      const eurTicker = await fetch('https://api.binance.com/api/v3/ticker/price?symbol=EURUSDT', { headers: { Accept: 'application/json' } });
-      if (eurTicker.ok) {
-        const { price: eurPrice } = await eurTicker.json();
-        const eu = Number(eurPrice);
-        if (eu > 0) {
-          eurRate = eu;
-          currency = 'EUR';
+    let currency = priceCurrency;
+    if (currency !== 'EUR') {
+      const convertPair = currency === 'USDT' ? 'EURUSDT' : currency === 'BUSD' ? 'EURBUSD' : null;
+      if (convertPair) {
+        try {
+          const eurTicker = await fetch(`https://api.binance.com/api/v3/ticker/price?symbol=${convertPair}`, { headers: { Accept: 'application/json' } });
+          if (eurTicker.ok) {
+            const { price: eurPrice } = await eurTicker.json();
+            const rate = Number(eurPrice);
+            if (rate > 0) {
+              eurRate = rate;
+              currency = 'EUR';
+            }
+          }
+        } catch (error) {
+          // keep original currency
         }
       }
-    } catch (error) {
-      // stay in USD
     }
 
     const chartData = candles.map(candle => {
@@ -94,7 +104,7 @@ module.exports = async (req, res) => {
       const lowNum = Number(low);
       const closeNum = Number(close);
 
-      const convert = (num) => currency === 'EUR' ? num / eurRate : num;
+      const convert = (num) => currency === 'EUR' && priceCurrency !== 'EUR' ? num / eurRate : num;
 
       return {
         date: new Date(openTime).toISOString().split('T')[0],
