@@ -109,12 +109,10 @@ export const Portfolio: React.FC<PortfolioProps> = ({ privacy }) => {
         return;
       }
       
-      // Simple approach: generate synthetic data from current prices
-      // Only fetch real data on mount or when holdings change
+      // Fast approach: use current snapshot, fetch real MSCI data
       const now = Date.now();
       const points: any[] = [];
       
-      // Generate time points based on range
       const intervals: Record<string, { count: number; step: number }> = {
         '1D': { count: 24, step: 3600 * 1000 },
         '1W': { count: 7, step: 86400 * 1000 },
@@ -127,6 +125,17 @@ export const Portfolio: React.FC<PortfolioProps> = ({ privacy }) => {
       const config = intervals[timeRange] || intervals['1M'];
       const startTime = now - (config.count * config.step);
       
+      // Fetch real MSCI World data (using URTH ETF as proxy)
+      let msciData: any[] = [];
+      try {
+        const msciResult = await fetchHistoricalPrices('URTH', timeRange);
+        msciData = msciResult.data || [];
+      } catch (e) {
+        console.warn('Failed to fetch MSCI data:', e);
+      }
+      
+      const msciBaseline = msciData.length > 0 ? msciData[0].price : 100;
+      
       for (let i = 0; i <= config.count; i++) {
         const timestamp = startTime + (i * config.step);
         const date = new Date(timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
@@ -136,7 +145,6 @@ export const Portfolio: React.FC<PortfolioProps> = ({ privacy }) => {
         let carolinaValue = 0;
         
         holdings.forEach(h => {
-          // Use current price as baseline
           prices[h.symbol] = h.currentPrice;
           const value = h.shares * h.currentPrice;
           if (h.owner === PortfolioOwner.ME) {
@@ -148,12 +156,21 @@ export const Portfolio: React.FC<PortfolioProps> = ({ privacy }) => {
         
         const total = meValue + carolinaValue;
         
+        // Find closest MSCI data point
+        let msciPrice = msciBaseline;
+        if (msciData.length > 0) {
+          const ratio = i / config.count;
+          const msciIndex = Math.floor(ratio * (msciData.length - 1));
+          msciPrice = msciData[msciIndex]?.price || msciBaseline;
+        }
+        
         points.push({
           date,
           Me: meValue,
           Carolina: carolinaValue,
           Total: total,
-          MSCI: total * 1.05, // Simple benchmark
+          MSCI: msciPrice,
+          msciBaseline,
           prices,
         });
       }
@@ -287,7 +304,7 @@ export const Portfolio: React.FC<PortfolioProps> = ({ privacy }) => {
       return (weightedReturn / totalWeight) * 100;
     };
 
-    const baselineMSCI = historyData[0]?.MSCI || 0;
+    const msciBaseline = historyData[0]?.msciBaseline || historyData[0]?.MSCI || 100;
 
     return historyData.map(point => ({
       date: point.date,
@@ -297,7 +314,7 @@ export const Portfolio: React.FC<PortfolioProps> = ({ privacy }) => {
       totalPerf: computeOwnerPerf(point, 'Total'),
       mePerf: computeOwnerPerf(point, PortfolioOwner.ME),
       carolinaPerf: computeOwnerPerf(point, PortfolioOwner.CAROLINA),
-      msciPerf: baselineMSCI ? ((point.MSCI - baselineMSCI) / baselineMSCI) * 100 : 0,
+      msciPerf: msciBaseline ? ((point.MSCI - msciBaseline) / msciBaseline) * 100 : 0,
     }));
   }, [historyData, holdings]);
 
@@ -559,27 +576,23 @@ export const Portfolio: React.FC<PortfolioProps> = ({ privacy }) => {
 
                   {activeTab === 'Total' ? (
                     <>
-                      <Area yAxisId="value" type="monotone" dataKey="meValue" name="Me Value" stackId="value" stroke="#6366f1" fill="url(#colorMe)" strokeWidth={2} />
-                      <Area yAxisId="value" type="monotone" dataKey="carolinaValue" name="Carolina Value" stackId="value" stroke="#ec4899" fill="url(#colorCarolina)" strokeWidth={2} />
+                      <Area yAxisId="value" type="monotone" dataKey="meValue" name="Me" stackId="value" stroke="#6366f1" fill="url(#colorMe)" strokeWidth={2} />
+                      <Area yAxisId="value" type="monotone" dataKey="carolinaValue" name="Carolina" stackId="value" stroke="#ec4899" fill="url(#colorCarolina)" strokeWidth={2} />
                     </>
                   ) : activeTab === 'Me' ? (
-                    <Area yAxisId="value" type="monotone" dataKey="meValue" name="Me Value" stroke="#6366f1" fill="url(#colorMe)" strokeWidth={2} />
+                    <Area yAxisId="value" type="monotone" dataKey="meValue" name="Me" stroke="#6366f1" fill="url(#colorMe)" strokeWidth={2} />
                   ) : (
-                    <Area yAxisId="value" type="monotone" dataKey="carolinaValue" name="Carolina Value" stroke="#ec4899" fill="url(#colorCarolina)" strokeWidth={2} />
-                  )}
-
-                  {activeTab === 'Total' && (
-                    <Line yAxisId="value" type="monotone" dataKey="totalValue" name="Total Value" stroke="#10b981" strokeWidth={3} dot={false} />
+                    <Area yAxisId="value" type="monotone" dataKey="carolinaValue" name="Carolina" stroke="#ec4899" fill="url(#colorCarolina)" strokeWidth={2} />
                   )}
 
                   {(activeTab === 'Total' || activeTab === 'Me') && (
-                    <Line yAxisId="percent" type="monotone" dataKey="mePerf" name="Me Performance" stroke="#6366f1" strokeWidth={2} dot={false} strokeDasharray={activeTab === 'Total' ? '4 4' : '0'} />
+                    <Line yAxisId="percent" type="monotone" dataKey="mePerf" name="Me %" stroke="#6366f1" strokeWidth={2} dot={false} strokeDasharray="5 5" />
                   )}
                   {(activeTab === 'Total' || activeTab === 'Carolina') && (
-                    <Line yAxisId="percent" type="monotone" dataKey="carolinaPerf" name="Carolina Performance" stroke="#ec4899" strokeWidth={2} dot={false} strokeDasharray={activeTab === 'Total' ? '4 4' : '0'} />
+                    <Line yAxisId="percent" type="monotone" dataKey="carolinaPerf" name="Carolina %" stroke="#ec4899" strokeWidth={2} dot={false} strokeDasharray="5 5" />
                   )}
                   {activeTab === 'Total' && (
-                    <Line yAxisId="percent" type="monotone" dataKey="totalPerf" name="Total Performance" stroke="#10b981" strokeWidth={3} dot={false} />
+                    <Line yAxisId="percent" type="monotone" dataKey="totalPerf" name="Total %" stroke="#10b981" strokeWidth={3} dot={false} />
                   )}
                   {showBenchmark && (
                     <Line yAxisId="percent" type="monotone" dataKey="msciPerf" name="MSCI World" stroke="#fbbf24" strokeWidth={2} dot={false} />
