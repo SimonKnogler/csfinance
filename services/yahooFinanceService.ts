@@ -622,13 +622,23 @@ export const generatePortfolioHistory = async (holdings: StockHolding[], range: 
       return [];
     }
 
+    // Track last known price for each symbol to handle missing data points
+    const lastKnownPrices = new Map<string, number>();
+
     const chartData = sortedTimestamps.map(timestamp => {
       const { date, pricesBySymbol } = timestampMap.get(timestamp)!;
       let meValue = 0;
       let carolinaValue = 0;
 
       holdings.forEach(holding => {
-        const price = pricesBySymbol.get(holding.symbol);
+        // Use current price if available, otherwise use last known price
+        let price = pricesBySymbol.get(holding.symbol);
+        if (price !== undefined) {
+          lastKnownPrices.set(holding.symbol, price);
+        } else {
+          price = lastKnownPrices.get(holding.symbol);
+        }
+
         if (price !== undefined) {
           const value = holding.shares * price;
           if (holding.owner === PortfolioOwner.ME) {
