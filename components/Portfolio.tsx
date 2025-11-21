@@ -546,8 +546,8 @@ export const Portfolio: React.FC<PortfolioProps> = ({ privacy }) => {
           <Card className="flex flex-col mb-6">
             <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
               <div>
-                <p className="text-xs uppercase tracking-[0.2em] text-slate-500 mb-1">Portfolio Trajectory</p>
-                <p className="text-sm text-slate-400">Absolute net worth (filled) + price-only performance (lines)</p>
+                <p className="text-xs uppercase tracking-[0.2em] text-slate-500 mb-1">Portfolio Performance</p>
+                <p className="text-sm text-slate-400">Relative returns since start of selected period</p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <button onClick={() => setShowBenchmark(!showBenchmark)} className={`px-3 py-1.5 text-sm font-medium rounded-md border border-slate-700 flex items-center gap-2 transition-all ${showBenchmark ? 'bg-indigo-500/20 text-indigo-300 border-indigo-500/50' : 'text-slate-400 hover:text-white bg-darker'}`}>
@@ -566,27 +566,8 @@ export const Portfolio: React.FC<PortfolioProps> = ({ privacy }) => {
             <div className="h-[420px] w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <ComposedChart data={chartData} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="colorMe" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3}/>
-                      <stop offset="95%" stopColor="#6366f1" stopOpacity={0}/>
-                    </linearGradient>
-                    <linearGradient id="colorCarolina" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#ec4899" stopOpacity={0.3}/>
-                      <stop offset="95%" stopColor="#ec4899" stopOpacity={0}/>
-                    </linearGradient>
-                  </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
                   <XAxis dataKey="date" stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} minTickGap={40} />
-                  <YAxis 
-                    yAxisId="value"
-                    stroke="#94a3b8" 
-                    fontSize={12} 
-                    tickLine={false} 
-                    axisLine={false} 
-                    tickFormatter={(val) => privacy ? '' : `€${(val/1000).toFixed(0)}k`}
-                    domain={['auto', 'auto']}
-                  />
                   <YAxis
                     yAxisId="percent"
                     orientation="right"
@@ -600,25 +581,10 @@ export const Portfolio: React.FC<PortfolioProps> = ({ privacy }) => {
                     contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px' }} 
                     itemStyle={{ color: '#f8fafc' }} 
                     formatter={(value: number, name, props) => {
-                      const percentKeys = ['totalPerf', 'mePerf', 'carolinaPerf', 'msciPerf'];
-                      if (percentKeys.includes((props?.dataKey as string) || '')) {
-                        return [`${Number(value).toFixed(2)}%`, name];
-                      }
-                      return [privacy ? '****' : `€${Number(value).toLocaleString(undefined, { maximumFractionDigits: 0 })}`, name];
+                      return [`${Number(value).toFixed(2)}%`, name];
                     }}
                   />
                   <Legend verticalAlign="top" height={36} iconType="circle" />
-
-                  {activeTab === 'Total' ? (
-                    <>
-                      <Area yAxisId="value" type="monotone" dataKey="meValue" name="Me" stackId="value" stroke="#6366f1" fill="url(#colorMe)" strokeWidth={2} />
-                      <Area yAxisId="value" type="monotone" dataKey="carolinaValue" name="Carolina" stackId="value" stroke="#ec4899" fill="url(#colorCarolina)" strokeWidth={2} />
-                    </>
-                  ) : activeTab === 'Me' ? (
-                    <Area yAxisId="value" type="monotone" dataKey="meValue" name="Me" stroke="#6366f1" fill="url(#colorMe)" strokeWidth={2} />
-                  ) : (
-                    <Area yAxisId="value" type="monotone" dataKey="carolinaValue" name="Carolina" stroke="#ec4899" fill="url(#colorCarolina)" strokeWidth={2} />
-                  )}
 
                   {(activeTab === 'Total' || activeTab === 'Me') && (
                     <Line yAxisId="percent" type="monotone" dataKey="mePerf" name="Me %" stroke="#6366f1" strokeWidth={2} dot={false} strokeDasharray="5 5" />
