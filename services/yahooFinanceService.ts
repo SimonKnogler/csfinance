@@ -41,6 +41,7 @@ const YAHOO_HEADERS: Record<string, string> = {
 
 const PRICE_CACHE_TTL_MS = 60 * 1000; // 1 minute
 const METADATA_CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
+const HISTORICAL_CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes
 
 type CacheEntry<T> = { expires: number; value: T };
 
@@ -142,6 +143,8 @@ export interface StockMetadata {
 
 const priceCache = new Map<string, CacheEntry<StockQuote>>();
 const metadataCache = new Map<string, CacheEntry<StockMetadata>>();
+const historicalCache = new Map<string, CacheEntry<HistoricalPriceResult>>();
+const historicalInFlight = new Map<string, Promise<HistoricalPriceResult>>();
 
 const fetchFromApi = async <T>(path: string, params: Record<string, string>): Promise<T> => {
   const query = new URLSearchParams(params).toString();
@@ -679,72 +682,96 @@ export const fetchHistoricalPrices = async (symbol: string, range: TimeRange): P
     throw new Error('Ticker symbol is required.');
   }
 
-  if (isCryptoSymbol(normalized)) {
-    try {
-      return await fetchCryptoHistoryFromApi(normalized, range);
-    } catch (apiError) {
-      console.warn(`Crypto history API failed for ${normalized}:`, (apiError as Error).message);
-      const coinId = getCoinGeckoId(normalized);
-      if (coinId) {
-        const days = COINGECKO_DAYS_MAP[range] ?? 30;
-        return fetchCoinGeckoHistoryDirect(coinId, days);
-      }
-      throw apiError;
-    }
+  const cacheKey = `${normalized}-${range}`;
+  const now = Date.now();
+  const cached = historicalCache.get(cacheKey);
+  if (cached && cached.expires > now) {
+    return cached.value;
   }
+
+  const pending = historicalInFlight.get(cacheKey);
+  if (pending) {
+    return pending;
+  }
+
+  const fetchPromise = (async (): Promise<HistoricalPriceResult> => {
+    if (isCryptoSymbol(normalized)) {
+      try {
+        return await fetchCryptoHistoryFromApi(normalized, range);
+      } catch (apiError) {
+        console.warn(`Crypto history API failed for ${normalized}:`, (apiError as Error).message);
+        const coinId = getCoinGeckoId(normalized);
+        if (coinId) {
+          const days = COINGECKO_DAYS_MAP[range] ?? 30;
+          return fetchCoinGeckoHistoryDirect(coinId, days);
+        }
+        throw apiError;
+      }
+    }
+
+    try {
+      return await fetchStockHistoryFromApi(normalized, range);
+    } catch (apiError) {
+      console.warn(`Stock history API failed for ${normalized}:`, (apiError as Error).message);
+    }
+
+    const config = RANGE_MAP[range] || RANGE_MAP[TimeRange.MONTH];
+    const result = await fetchYahooChartResult(normalized, config.range, config.interval);
+
+    const timestamps: number[] = result.timestamp || [];
+    const quote = result.indicators?.quote?.[0] || {};
+    const closes: (number | null)[] = quote.close || [];
+    const opens: (number | null)[] = quote.open || [];
+    const highs: (number | null)[] = quote.high || [];
+    const lows: (number | null)[] = quote.low || [];
+    const volumes: (number | null)[] = quote.volume || [];
+
+    if (!timestamps.length || !closes.length) {
+      throw new Error('Yahoo Finance returned an empty price series.');
+    }
+
+    const points = timestamps
+      .map((timestamp, idx) => {
+        const close = closes[idx];
+        if (typeof close !== 'number') return null;
+        return {
+          date: formatTimestampLabel(timestamp, config.interval),
+          timestamp,
+          price: Number(close.toFixed(2)),
+          close: Number(close.toFixed(2)),
+          open: typeof opens[idx] === 'number' ? Number((opens[idx] as number).toFixed(2)) : null,
+          high: typeof highs[idx] === 'number' ? Number((highs[idx] as number).toFixed(2)) : null,
+          low: typeof lows[idx] === 'number' ? Number((lows[idx] as number).toFixed(2)) : null,
+          volume: typeof volumes[idx] === 'number' ? Number(volumes[idx]) : null,
+        };
+      })
+      .filter((point): point is PricePoint => Boolean(point));
+
+    if (!points.length) {
+      throw new Error('Yahoo Finance returned no usable price points.');
+    }
+
+    const lastTimestamp = result.meta?.regularMarketTime || timestamps[timestamps.length - 1];
+    const lastUpdated = lastTimestamp ? new Date(lastTimestamp * 1000).toISOString() : new Date().toISOString();
+    const currency = (result.meta?.currency || 'USD').toUpperCase();
+
+    return {
+      data: points,
+      lastUpdated,
+      source: 'Yahoo Finance',
+      currency,
+    };
+  })();
+
+  historicalInFlight.set(cacheKey, fetchPromise);
 
   try {
-    return await fetchStockHistoryFromApi(normalized, range);
-  } catch (apiError) {
-    console.warn(`Stock history API failed for ${normalized}:`, (apiError as Error).message);
+    const result = await fetchPromise;
+    historicalCache.set(cacheKey, { value: result, expires: now + HISTORICAL_CACHE_TTL_MS });
+    return result;
+  } finally {
+    historicalInFlight.delete(cacheKey);
   }
-
-  const config = RANGE_MAP[range] || RANGE_MAP[TimeRange.MONTH];
-  const result = await fetchYahooChartResult(normalized, config.range, config.interval);
-
-  const timestamps: number[] = result.timestamp || [];
-  const quote = result.indicators?.quote?.[0] || {};
-  const closes: (number | null)[] = quote.close || [];
-  const opens: (number | null)[] = quote.open || [];
-  const highs: (number | null)[] = quote.high || [];
-  const lows: (number | null)[] = quote.low || [];
-  const volumes: (number | null)[] = quote.volume || [];
-
-  if (!timestamps.length || !closes.length) {
-    throw new Error('Yahoo Finance returned an empty price series.');
-  }
-
-  const points = timestamps
-    .map((timestamp, idx) => {
-      const close = closes[idx];
-      if (typeof close !== 'number') return null;
-      return {
-        date: formatTimestampLabel(timestamp, config.interval),
-        timestamp,
-        price: Number(close.toFixed(2)),
-        close: Number(close.toFixed(2)),
-        open: typeof opens[idx] === 'number' ? Number((opens[idx] as number).toFixed(2)) : null,
-        high: typeof highs[idx] === 'number' ? Number((highs[idx] as number).toFixed(2)) : null,
-        low: typeof lows[idx] === 'number' ? Number((lows[idx] as number).toFixed(2)) : null,
-        volume: typeof volumes[idx] === 'number' ? Number(volumes[idx]) : null,
-      };
-    })
-    .filter((point): point is PricePoint => Boolean(point));
-
-  if (!points.length) {
-    throw new Error('Yahoo Finance returned no usable price points.');
-  }
-
-  const lastTimestamp = result.meta?.regularMarketTime || timestamps[timestamps.length - 1];
-  const lastUpdated = lastTimestamp ? new Date(lastTimestamp * 1000).toISOString() : new Date().toISOString();
-  const currency = (result.meta?.currency || 'USD').toUpperCase();
-
-  return {
-    data: points,
-    lastUpdated,
-    source: 'Yahoo Finance',
-    currency,
-  };
 };
 
 export const loadHoldingHistory = async (holding: StockHolding, range: TimeRange): Promise<HistoricalPriceResult> => {
