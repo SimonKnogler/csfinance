@@ -186,17 +186,17 @@ export const Portfolio: React.FC<PortfolioProps> = ({ privacy }) => {
       return historyData;
     }
 
-    // Calculate performance % relative to the LATEST (most recent) value, not the first
-    // This way, today = 0%, and historical values show how much lower/higher they were
-    const latest = historyData[historyData.length - 1];
+    // Calculate performance % relative to the FIRST value (start of period)
+    // This way, the start = 0%, and values show growth/decline from the beginning
+    const first = historyData[0];
     const safeDiv = (curr: number, base: number) => base > 0 ? ((curr - base) / base) * 100 : 0;
 
     return historyData.map(d => ({
       date: d.date,
-      Me: safeDiv(d.Me, latest.Me),
-      Carolina: safeDiv(d.Carolina, latest.Carolina),
-      Total: safeDiv(d.Total, latest.Total),
-      MSCI: safeDiv(d.MSCI, latest.MSCI),
+      Me: safeDiv(d.Me, first.Me),
+      Carolina: safeDiv(d.Carolina, first.Carolina),
+      Total: safeDiv(d.Total, first.Total),
+      MSCI: safeDiv(d.MSCI, first.MSCI),
     }));
   }, [historyData, chartMode]);
 
