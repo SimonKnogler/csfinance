@@ -3,8 +3,6 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { 
   RefreshCw, 
   Plus, 
-  Layers, 
-  LineChart, 
   Globe, 
   Briefcase, 
   Edit2, 
@@ -21,13 +19,13 @@ import {
   ResponsiveContainer, 
   AreaChart, 
   Area, 
-  LineChart as RechartsLineChart,
   Line,
   Tooltip as RechartsTooltip,
   CartesianGrid,
   XAxis,
   YAxis,
-  Legend
+  Legend,
+  ComposedChart
 } from 'recharts';
 import { StockHolding, PortfolioOwner, TimeRange, AssetType, NewsItem, CashHolding } from '../types';
 import { fetchStockQuote, generatePortfolioHistory, fetchMarketNews, loadHoldingHistory, PricePoint } from '../services/yahooFinanceService';
@@ -43,13 +41,21 @@ enum SubView {
   PROJECTIONS = 'Projections',
 }
 
+type PortfolioHistoryPoint = {
+  date: string;
+  Me: number;
+  Carolina: number;
+  Total: number;
+  MSCI: number;
+  prices?: Record<string, number>;
+};
+
 export const Portfolio: React.FC<PortfolioProps> = ({ privacy }) => {
   const [subView, setSubView] = useState<SubView>(SubView.OVERVIEW);
   
   const [holdings, setHoldings] = useState<StockHolding[]>([]);
   const [cashHoldings, setCashHoldings] = useState<CashHolding[]>([]);
   const [timeRange, setTimeRange] = useState<TimeRange>(TimeRange.MONTH);
-  const [chartMode, setChartMode] = useState<'VALUE' | 'PERFORMANCE'>('PERFORMANCE'); 
   const [activeTab, setActiveTab] = useState<'Total' | 'Me' | 'Carolina'>('Total');
   const [showBenchmark, setShowBenchmark] = useState(false);
   
@@ -58,7 +64,7 @@ export const Portfolio: React.FC<PortfolioProps> = ({ privacy }) => {
   const [editingHolding, setEditingHolding] = useState<StockHolding | null>(null);
   const [isAddCashModalOpen, setIsAddCashModalOpen] = useState(false);
   
-  const [historyData, setHistoryData] = useState<any[]>([]);
+  const [historyData, setHistoryData] = useState<PortfolioHistoryPoint[]>([]);
   const [news, setNews] = useState<NewsItem[]>([]);
   const [selectedHolding, setSelectedHolding] = useState<StockHolding | null>(null);
   const [holdingTimeRange, setHoldingTimeRange] = useState<TimeRange>(TimeRange.MONTH);
@@ -179,26 +185,72 @@ export const Portfolio: React.FC<PortfolioProps> = ({ privacy }) => {
     return holdings.filter(h => h.owner === targetOwner);
   }, [holdings, activeTab]);
 
-  const processedChartData = useMemo(() => {
+  const chartData = useMemo(() => {
     if (!historyData || historyData.length === 0) return [];
 
-    if (chartMode === 'VALUE') {
-      return historyData;
-    }
+    type OwnerKey = 'Total' | PortfolioOwner;
 
-    // Calculate performance % relative to the FIRST value (start of period)
-    // This way, the start = 0%, and values show growth/decline from the beginning
-    const first = historyData[0];
-    const safeDiv = (curr: number, base: number) => base > 0 ? ((curr - base) / base) * 100 : 0;
+    const baselinePrices = new Map<string, number>();
+    historyData.forEach(point => {
+      if (!point.prices) return;
+      Object.entries(point.prices).forEach(([symbol, price]) => {
+        if (!baselinePrices.has(symbol) && typeof price === 'number') {
+          baselinePrices.set(symbol, price);
+        }
+      });
+    });
 
-    return historyData.map(d => ({
-      date: d.date,
-      Me: safeDiv(d.Me, first.Me),
-      Carolina: safeDiv(d.Carolina, first.Carolina),
-      Total: safeDiv(d.Total, first.Total),
-      MSCI: safeDiv(d.MSCI, first.MSCI),
+    const ownerWeights: Record<OwnerKey, number> = {
+      Total: 0,
+      [PortfolioOwner.ME]: 0,
+      [PortfolioOwner.CAROLINA]: 0,
+    };
+
+    holdings.forEach(holding => {
+      const basePrice = baselinePrices.get(holding.symbol);
+      if (!basePrice || !Number.isFinite(basePrice)) return;
+      const weight = holding.shares * basePrice;
+      ownerWeights.Total += weight;
+      ownerWeights[holding.owner] += weight;
+    });
+
+    const holdingsByOwner: Record<OwnerKey, StockHolding[]> = {
+      Total: holdings,
+      [PortfolioOwner.ME]: holdings.filter(h => h.owner === PortfolioOwner.ME),
+      [PortfolioOwner.CAROLINA]: holdings.filter(h => h.owner === PortfolioOwner.CAROLINA),
+    };
+
+    const computeOwnerPerf = (point: PortfolioHistoryPoint, owner: OwnerKey) => {
+      const totalWeight = ownerWeights[owner];
+      if (!totalWeight || !point.prices) return 0;
+      const targetHoldings = holdingsByOwner[owner];
+      let weightedReturn = 0;
+
+      targetHoldings.forEach(holding => {
+        const basePrice = baselinePrices.get(holding.symbol);
+        const currentPrice = point.prices?.[holding.symbol];
+        if (!basePrice || basePrice === 0 || typeof currentPrice !== 'number') return;
+        const weight = holding.shares * basePrice;
+        const priceReturn = (currentPrice - basePrice) / basePrice;
+        weightedReturn += priceReturn * weight;
+      });
+
+      return (weightedReturn / totalWeight) * 100;
+    };
+
+    const baselineMSCI = historyData[0]?.MSCI || 0;
+
+    return historyData.map(point => ({
+      date: point.date,
+      totalValue: point.Total,
+      meValue: point.Me,
+      carolinaValue: point.Carolina,
+      totalPerf: computeOwnerPerf(point, 'Total'),
+      mePerf: computeOwnerPerf(point, PortfolioOwner.ME),
+      carolinaPerf: computeOwnerPerf(point, PortfolioOwner.CAROLINA),
+      msciPerf: baselineMSCI ? ((point.MSCI - baselineMSCI) / baselineMSCI) * 100 : 0,
     }));
-  }, [historyData, chartMode]);
+  }, [historyData, holdings]);
 
   const metrics = useMemo(() => {
     // Portfolio value (investments only - for performance tracking)
@@ -392,95 +444,98 @@ export const Portfolio: React.FC<PortfolioProps> = ({ privacy }) => {
           {/* MAIN CHART */}
           <Card className="flex flex-col mb-6">
             <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
-              <div className="flex flex-wrap items-center gap-2">
-                <div className="bg-darker p-1 rounded-lg border border-slate-800 flex items-center">
-                  <button onClick={() => setChartMode('VALUE')} className={`px-3 py-1.5 text-sm font-medium rounded-md flex items-center gap-2 transition-all ${chartMode === 'VALUE' ? 'bg-slate-700 text-white shadow' : 'text-slate-400 hover:text-white'}`}>
-                    <Layers size={14} /> Value
-                  </button>
-                  <button onClick={() => setChartMode('PERFORMANCE')} className={`px-3 py-1.5 text-sm font-medium rounded-md flex items-center gap-2 transition-all ${chartMode === 'PERFORMANCE' ? 'bg-slate-700 text-white shadow' : 'text-slate-400 hover:text-white'}`}>
-                    <LineChart size={14} /> Performance %
-                  </button>
-                </div>
-
-                {chartMode === 'PERFORMANCE' && (
-                  <button onClick={() => setShowBenchmark(!showBenchmark)} className={`px-3 py-1.5 text-sm font-medium rounded-md border border-slate-700 flex items-center gap-2 transition-all ${showBenchmark ? 'bg-indigo-500/20 text-indigo-300 border-indigo-500/50' : 'text-slate-400 hover:text-white bg-darker'}`}>
-                    <Globe size={14} /> vs MSCI World
-                  </button>
-                )}
+              <div>
+                <p className="text-xs uppercase tracking-[0.2em] text-slate-500 mb-1">Portfolio Trajectory</p>
+                <p className="text-sm text-slate-400">Absolute net worth (filled) + price-only performance (lines)</p>
               </div>
-              
-              <div className="bg-darker p-1 rounded-lg border border-slate-800 flex items-center overflow-x-auto">
-                 {Object.values(TimeRange).map(range => (
-                   <button key={range} onClick={() => setTimeRange(range)} className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${timeRange === range ? 'bg-primary text-white shadow-sm' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
-                     {range}
-                   </button>
-                 ))}
+              <div className="flex flex-wrap items-center gap-2">
+                <button onClick={() => setShowBenchmark(!showBenchmark)} className={`px-3 py-1.5 text-sm font-medium rounded-md border border-slate-700 flex items-center gap-2 transition-all ${showBenchmark ? 'bg-indigo-500/20 text-indigo-300 border-indigo-500/50' : 'text-slate-400 hover:text-white bg-darker'}`}>
+                  <Globe size={14} /> vs MSCI World
+                </button>
+                <div className="bg-darker p-1 rounded-lg border border-slate-800 flex items-center overflow-x-auto">
+                  {Object.values(TimeRange).map(range => (
+                    <button key={range} onClick={() => setTimeRange(range)} className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${timeRange === range ? 'bg-primary text-white shadow-sm' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
+                      {range}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
 
-            <div className="h-[400px] w-full">
+            <div className="h-[420px] w-full">
               <ResponsiveContainer width="100%" height="100%">
-                {chartMode === 'VALUE' ? (
-                  <AreaChart data={processedChartData} margin={{ top: 10, right: 0, left: 0, bottom: 0 }}>
-                    <defs>
-                      <linearGradient id="colorMe" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3}/>
-                        <stop offset="95%" stopColor="#6366f1" stopOpacity={0}/>
-                      </linearGradient>
-                      <linearGradient id="colorCarolina" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#ec4899" stopOpacity={0.3}/>
-                        <stop offset="95%" stopColor="#ec4899" stopOpacity={0}/>
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
-                    <XAxis dataKey="date" stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} minTickGap={40} />
-                    <YAxis 
-                      stroke="#94a3b8" 
-                      fontSize={12} 
-                      tickLine={false} 
-                      axisLine={false} 
-                      tickFormatter={(val) => privacy ? '' : `€${(val/1000).toFixed(0)}k`}
-                      domain={['auto', 'auto']}
-                    />
-                    <RechartsTooltip 
-                      contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px' }} 
-                      itemStyle={{ color: '#f8fafc' }} 
-                      formatter={(value: number) => [privacy ? '****' : `€${value.toLocaleString(undefined, {maximumFractionDigits: 0})}`]} 
-                    />
-                    <Legend verticalAlign="top" height={36} iconType="circle" />
-                    {activeTab === 'Total' ? (
-                      <>
-                        <Area type="monotone" dataKey="Me" stackId="1" stroke="#6366f1" fill="url(#colorMe)" strokeWidth={2} />
-                        <Area type="monotone" dataKey="Carolina" stackId="1" stroke="#ec4899" fill="url(#colorCarolina)" strokeWidth={2} />
-                      </>
-                    ) : (
-                      <Area type="monotone" dataKey={activeTab} stroke={activeTab === 'Me' ? "#6366f1" : "#ec4899"} fill={`url(#color${activeTab})`} strokeWidth={2} />
-                    )}
-                  </AreaChart>
-                ) : (
-                   <RechartsLineChart data={processedChartData} margin={{ top: 10, right: 0, left: 0, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
-                    <XAxis dataKey="date" stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} minTickGap={40} />
-                    <YAxis 
-                      stroke="#94a3b8" 
-                      fontSize={12} 
-                      tickLine={false} 
-                      axisLine={false} 
-                      tickFormatter={(val) => `${val.toFixed(0)}%`}
-                      domain={['auto', 'auto']}
-                    />
-                    <RechartsTooltip 
-                      contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px' }} 
-                      itemStyle={{ color: '#f8fafc' }} 
-                      formatter={(value: number) => [`${value.toFixed(2)}%`]} 
-                    />
-                    <Legend verticalAlign="top" height={36} iconType="circle" />
-                    {activeTab === 'Total' && <Line type="monotone" dataKey="Total" stroke="#10b981" strokeWidth={3} dot={false} />}
-                    {(activeTab === 'Total' || activeTab === 'Me') && <Line type="monotone" dataKey="Me" stroke="#6366f1" strokeWidth={activeTab === 'Me' ? 3 : 2} dot={false} strokeDasharray={activeTab === 'Total' ? "5 5" : "0"} />}
-                    {(activeTab === 'Total' || activeTab === 'Carolina') && <Line type="monotone" dataKey="Carolina" stroke="#ec4899" strokeWidth={activeTab === 'Carolina' ? 3 : 2} dot={false} strokeDasharray={activeTab === 'Total' ? "5 5" : "0"} />}
-                    {showBenchmark && <Line type="monotone" name="MSCI World" dataKey="MSCI" stroke="#fbbf24" strokeWidth={2} dot={false} />}
-                  </RechartsLineChart>
-                )}
+                <ComposedChart data={chartData} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="colorMe" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3}/>
+                      <stop offset="95%" stopColor="#6366f1" stopOpacity={0}/>
+                    </linearGradient>
+                    <linearGradient id="colorCarolina" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#ec4899" stopOpacity={0.3}/>
+                      <stop offset="95%" stopColor="#ec4899" stopOpacity={0}/>
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
+                  <XAxis dataKey="date" stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} minTickGap={40} />
+                  <YAxis 
+                    yAxisId="value"
+                    stroke="#94a3b8" 
+                    fontSize={12} 
+                    tickLine={false} 
+                    axisLine={false} 
+                    tickFormatter={(val) => privacy ? '' : `€${(val/1000).toFixed(0)}k`}
+                    domain={['auto', 'auto']}
+                  />
+                  <YAxis
+                    yAxisId="percent"
+                    orientation="right"
+                    stroke="#94a3b8"
+                    fontSize={12}
+                    tickLine={false}
+                    axisLine={false}
+                    tickFormatter={(val) => `${val.toFixed(0)}%`}
+                  />
+                  <RechartsTooltip 
+                    contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px' }} 
+                    itemStyle={{ color: '#f8fafc' }} 
+                    formatter={(value: number, name, props) => {
+                      const percentKeys = ['totalPerf', 'mePerf', 'carolinaPerf', 'msciPerf'];
+                      if (percentKeys.includes((props?.dataKey as string) || '')) {
+                        return [`${Number(value).toFixed(2)}%`, name];
+                      }
+                      return [privacy ? '****' : `€${Number(value).toLocaleString(undefined, { maximumFractionDigits: 0 })}`, name];
+                    }}
+                  />
+                  <Legend verticalAlign="top" height={36} iconType="circle" />
+
+                  {activeTab === 'Total' ? (
+                    <>
+                      <Area yAxisId="value" type="monotone" dataKey="meValue" name="Me Value" stackId="value" stroke="#6366f1" fill="url(#colorMe)" strokeWidth={2} />
+                      <Area yAxisId="value" type="monotone" dataKey="carolinaValue" name="Carolina Value" stackId="value" stroke="#ec4899" fill="url(#colorCarolina)" strokeWidth={2} />
+                    </>
+                  ) : activeTab === 'Me' ? (
+                    <Area yAxisId="value" type="monotone" dataKey="meValue" name="Me Value" stroke="#6366f1" fill="url(#colorMe)" strokeWidth={2} />
+                  ) : (
+                    <Area yAxisId="value" type="monotone" dataKey="carolinaValue" name="Carolina Value" stroke="#ec4899" fill="url(#colorCarolina)" strokeWidth={2} />
+                  )}
+
+                  {activeTab === 'Total' && (
+                    <Line yAxisId="value" type="monotone" dataKey="totalValue" name="Total Value" stroke="#10b981" strokeWidth={3} dot={false} />
+                  )}
+
+                  {(activeTab === 'Total' || activeTab === 'Me') && (
+                    <Line yAxisId="percent" type="monotone" dataKey="mePerf" name="Me Performance" stroke="#6366f1" strokeWidth={2} dot={false} strokeDasharray={activeTab === 'Total' ? '4 4' : '0'} />
+                  )}
+                  {(activeTab === 'Total' || activeTab === 'Carolina') && (
+                    <Line yAxisId="percent" type="monotone" dataKey="carolinaPerf" name="Carolina Performance" stroke="#ec4899" strokeWidth={2} dot={false} strokeDasharray={activeTab === 'Total' ? '4 4' : '0'} />
+                  )}
+                  {activeTab === 'Total' && (
+                    <Line yAxisId="percent" type="monotone" dataKey="totalPerf" name="Total Performance" stroke="#10b981" strokeWidth={3} dot={false} />
+                  )}
+                  {showBenchmark && (
+                    <Line yAxisId="percent" type="monotone" dataKey="msciPerf" name="MSCI World" stroke="#fbbf24" strokeWidth={2} dot={false} />
+                  )}
+                </ComposedChart>
               </ResponsiveContainer>
             </div>
           </Card>

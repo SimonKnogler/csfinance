@@ -627,6 +627,7 @@ export const generatePortfolioHistory = async (holdings: StockHolding[], range: 
 
     const chartData = sortedTimestamps.map(timestamp => {
       const { date, pricesBySymbol } = timestampMap.get(timestamp)!;
+      const snapshotPrices = new Map<string, number>();
       let meValue = 0;
       let carolinaValue = 0;
 
@@ -640,6 +641,7 @@ export const generatePortfolioHistory = async (holdings: StockHolding[], range: 
         }
 
         if (price !== undefined) {
+          snapshotPrices.set(holding.symbol, price);
           const value = holding.shares * price;
           if (holding.owner === PortfolioOwner.ME) {
             meValue += value;
@@ -661,6 +663,7 @@ export const generatePortfolioHistory = async (holdings: StockHolding[], range: 
         Carolina: carolinaValue,
         Total: total,
         MSCI: msci,
+        prices: Object.fromEntries(snapshotPrices),
       };
     }).filter(point => point.Total > 0);
 
