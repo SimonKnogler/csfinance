@@ -28,7 +28,7 @@ import {
   ComposedChart
 } from 'recharts';
 import { StockHolding, PortfolioOwner, TimeRange, AssetType, NewsItem, CashHolding } from '../types';
-import { fetchStockQuote, generatePortfolioHistory, fetchMarketNews, loadHoldingHistory, PricePoint } from '../services/yahooFinanceService';
+import { fetchStockQuote, fetchHistoricalPrices, fetchMarketNews, loadHoldingHistory, PricePoint } from '../services/yahooFinanceService';
 import { StorageService } from '../services/storageService';
 import { Card, Button, Input, Select, Badge, Money } from './UIComponents';
 
