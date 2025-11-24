@@ -305,7 +305,7 @@ export const Portfolio: React.FC<PortfolioProps> = ({ privacy }) => {
     return () => {
       cancelled = true;
     };
-  }, [selectedHolding, holdingTimeRange]);
+  }, [selectedHolding?.id, holdingTimeRange, holdings]);
 
   const filteredHoldings = useMemo(() => {
     if (activeTab === 'Total') return holdings;
