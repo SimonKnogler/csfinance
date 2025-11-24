@@ -1,9 +1,49 @@
-const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36';
+const USER_AGENT =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36';
+
+const YAHOO_PROXIES = [
+  { prefix: '', encode: false },
+  { prefix: 'https://api.allorigins.win/raw?url=', encode: true },
+  { prefix: 'https://thingproxy.freeboard.io/fetch/', encode: false },
+  { prefix: 'https://cors.isomorphic-git.org/', encode: false },
+];
 
 const sendJSON = (res, statusCode, payload) => {
   res.statusCode = statusCode;
   res.setHeader('Content-Type', 'application/json');
   res.end(JSON.stringify(payload));
+};
+
+const fetchYahooJson = async (url) => {
+  const attempts = [];
+  for (const proxy of YAHOO_PROXIES) {
+    const proxiedUrl = proxy.prefix ? `${proxy.prefix}${proxy.encode ? encodeURIComponent(url) : url}` : url;
+    try {
+      const response = await fetch(proxiedUrl, {
+        headers: {
+          'User-Agent': USER_AGENT,
+          Accept: 'application/json',
+        },
+      });
+      if (!response.ok) {
+        attempts.push(`${proxiedUrl} → HTTP ${response.status}`);
+        continue;
+      }
+      const text = await response.text();
+      if (!text) {
+        attempts.push(`${proxiedUrl} → empty body`);
+        continue;
+      }
+      try {
+        return JSON.parse(text);
+      } catch (err) {
+        attempts.push(`${proxiedUrl} → JSON parse error ${err.message}`);
+      }
+    } catch (error) {
+      attempts.push(`${proxiedUrl} → ${(error && error.message) || 'network error'}`);
+    }
+  }
+  throw new Error(`Yahoo Finance price request failed via all proxies: ${attempts.join(' | ')}`);
 };
 
 module.exports = async (req, res) => {
@@ -24,22 +64,11 @@ module.exports = async (req, res) => {
     return;
   }
 
-  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=1d`;
-
   try {
-    const response = await fetch(url, {
-      headers: {
-        'User-Agent': USER_AGENT,
-        'Accept': 'application/json',
-      },
-    });
-
-    if (!response.ok) {
-      sendJSON(res, response.status, { error: `Failed to fetch: ${response.status}` });
-      return;
-    }
-
-    const data = await response.json();
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(
+      symbol
+    )}?interval=1d&range=1d`;
+    const data = await fetchYahooJson(url);
     const result = data?.chart?.result?.[0];
 
     if (!result) {
@@ -56,24 +85,12 @@ module.exports = async (req, res) => {
       return;
     }
 
-    const quoteResponse = await fetch(`https://query1.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(symbol)}`, {
-      headers: {
-        'User-Agent': USER_AGENT,
-        'Accept': 'application/json',
-      },
-    });
-
-    let changePercent = 0;
-    let name = symbol.toUpperCase();
-
-    if (quoteResponse.ok) {
-      const quoteJson = await quoteResponse.json();
-      const quote = quoteJson?.quoteResponse?.result?.[0];
-      if (quote) {
-        changePercent = Number(quote.regularMarketChangePercent ?? 0);
-        name = quote.longName || quote.shortName || name;
-      }
-    }
+    const quoteJson = await fetchYahooJson(
+      `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(symbol)}`
+    );
+    const quote = quoteJson?.quoteResponse?.result?.[0];
+    const changePercent = quote ? Number(quote.regularMarketChangePercent ?? 0) : 0;
+    const name = quote?.longName || quote?.shortName || symbol.toUpperCase();
 
     sendJSON(res, 200, {
       symbol: symbol.toUpperCase(),

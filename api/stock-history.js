@@ -1,4 +1,12 @@
-const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36';
+const USER_AGENT =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36';
+
+const YAHOO_PROXIES = [
+  { prefix: '', encode: false },
+  { prefix: 'https://api.allorigins.win/raw?url=', encode: true },
+  { prefix: 'https://thingproxy.freeboard.io/fetch/', encode: false },
+  { prefix: 'https://cors.isomorphic-git.org/', encode: false },
+];
 
 const sendJSON = (res, status, payload) => {
   res.statusCode = status;
@@ -27,6 +35,38 @@ const getIntervalForRange = (range) => {
   }
 };
 
+const fetchYahooJson = async (url) => {
+  const attempts = [];
+  for (const proxy of YAHOO_PROXIES) {
+    const proxiedUrl = proxy.prefix ? `${proxy.prefix}${proxy.encode ? encodeURIComponent(url) : url}` : url;
+    try {
+      const response = await fetch(proxiedUrl, {
+        headers: {
+          'User-Agent': USER_AGENT,
+          Accept: 'application/json',
+        },
+      });
+      if (!response.ok) {
+        attempts.push(`${proxiedUrl} → HTTP ${response.status}`);
+        continue;
+      }
+      const text = await response.text();
+      if (!text) {
+        attempts.push(`${proxiedUrl} → empty body`);
+        continue;
+      }
+      try {
+        return JSON.parse(text);
+      } catch (err) {
+        attempts.push(`${proxiedUrl} → JSON parse error ${err.message}`);
+      }
+    } catch (error) {
+      attempts.push(`${proxiedUrl} → ${(error && error.message) || 'network error'}`);
+    }
+  }
+  throw new Error(`Yahoo Finance request failed via all proxies: ${attempts.join(' | ')}`);
+};
+
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Credentials', 'true');
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -46,23 +86,12 @@ module.exports = async (req, res) => {
     return;
   }
 
-  const interval = getIntervalForRange(range);
-  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=${range}&interval=${interval}`;
-
   try {
-    const response = await fetch(url, {
-      headers: {
-        'User-Agent': USER_AGENT,
-        'Accept': 'application/json',
-      },
-    });
-
-    if (!response.ok) {
-      sendJSON(res, response.status, { error: 'Failed to fetch data' });
-      return;
-    }
-
-    const data = await response.json();
+    const interval = getIntervalForRange(range);
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(
+      symbol
+    )}?range=${range}&interval=${interval}`;
+    const data = await fetchYahooJson(url);
     const result = data?.chart?.result?.[0];
 
     if (!result) {
@@ -81,9 +110,10 @@ module.exports = async (req, res) => {
     const chartData = timestamps
       .map((ts, idx) => {
         const date = new Date(ts * 1000);
-        const dateStr = interval.includes('m') || interval.includes('h')
-          ? date.toISOString().slice(0, 16).replace('T', ' ')
-          : date.toISOString().split('T')[0];
+        const dateStr =
+          interval.includes('m') || interval.includes('h')
+            ? date.toISOString().slice(0, 16).replace('T', ' ')
+            : date.toISOString().split('T')[0];
 
         return {
           date: dateStr,

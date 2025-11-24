@@ -14,6 +14,16 @@ const RANGE_CONFIG = {
   max: { interval: '1d', limit: 2000 },
 };
 
+const COINGECKO_RANGE_MAP = {
+  '1d': 1,
+  '5d': 5,
+  '1mo': 30,
+  '6mo': 180,
+  '1y': 365,
+  '5y': 1825,
+  max: 'max',
+};
+
 const toBaseSymbol = (symbol) => symbol.toUpperCase().split('-')[0];
 const toBinancePairs = (symbol) => {
   const base = toBaseSymbol(symbol);
@@ -128,34 +138,35 @@ module.exports = async (req, res) => {
 
     // Fallback to CryptoCompare
     try {
-      const base = toBaseSymbol(symbol);
-      const fallbackUrl = `https://min-api.cryptocompare.com/data/v2/histoday?fsym=${base}&tsym=EUR&limit=200`;
-      const resp = await fetch(fallbackUrl, { headers: { Accept: 'application/json' } });
+      const days = COINGECKO_RANGE_MAP[range] ?? 30;
+      const base = toBaseSymbol(symbol).toLowerCase();
+      const url = `https://api.coingecko.com/api/v3/coins/${base}/market_chart?vs_currency=eur&days=${days}`;
+      const resp = await fetch(url, { headers: { Accept: 'application/json' } });
       if (!resp.ok) {
-        throw new Error(`CryptoCompare history fallback failed: ${resp.status}`);
+        throw new Error(`CoinGecko history fallback failed: ${resp.status}`);
       }
 
       const payload = await resp.json();
-      const prices = payload?.Data?.Data || [];
+      const prices = payload?.prices || [];
       if (!prices.length) {
-        throw new Error('CryptoCompare history returned empty data');
+        throw new Error('CoinGecko history returned empty data');
       }
 
-      const fallbackData = prices.map(point => ({
-        date: new Date(point.time * 1000).toISOString().split('T')[0],
-        timestamp: point.time,
-        open: point.open,
-        high: point.high,
-        low: point.low,
-        close: point.close,
-        volume: point.volumefrom ?? 0,
+      const fallbackData = prices.map(([timestamp, price]) => ({
+        date: new Date(timestamp).toISOString().split('T')[0],
+        timestamp: Math.floor(timestamp / 1000),
+        open: price,
+        high: price,
+        low: price,
+        close: price,
+        volume: 0,
       }));
 
       sendJSON(res, 200, {
         symbol: symbol.toUpperCase(),
         currency: 'EUR',
         data: fallbackData,
-        source: 'CryptoCompare',
+        source: 'CoinGecko',
       });
     } catch (fallbackError) {
       console.error(`Error fetching crypto history for ${symbol}:`, fallbackError);
