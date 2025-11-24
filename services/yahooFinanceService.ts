@@ -29,10 +29,12 @@ const COINGECKO_DAYS_MAP: Record<TimeRange, number | 'max'> = {
 };
 
 const YAHOO_PROXY_ENDPOINTS: { prefix: string; encode: boolean }[] = [
+  { prefix: '', encode: false },
+  { prefix: 'https://stuff.mufeedvh.com/https://', encode: false },
   { prefix: 'https://api.allorigins.win/raw?url=', encode: true },
+  { prefix: 'https://cors.isomorphic-git.org/', encode: false },
   { prefix: 'https://thingproxy.freeboard.io/fetch/', encode: false },
   { prefix: 'https://corsproxy.io/?', encode: true },
-  { prefix: '', encode: false },
 ];
 
 const YAHOO_HEADERS: Record<string, string> = {

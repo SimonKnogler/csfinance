@@ -3,9 +3,11 @@ const USER_AGENT =
 
 const YAHOO_PROXIES = [
   { prefix: '', encode: false },
+  { prefix: 'https://stuff.mufeedvh.com/https://', encode: false },
   { prefix: 'https://api.allorigins.win/raw?url=', encode: true },
-  { prefix: 'https://thingproxy.freeboard.io/fetch/', encode: false },
   { prefix: 'https://cors.isomorphic-git.org/', encode: false },
+  { prefix: 'https://thingproxy.freeboard.io/fetch/', encode: false },
+  { prefix: 'https://corsproxy.io/?', encode: true },
 ];
 
 const sendJSON = (res, status, payload) => {
