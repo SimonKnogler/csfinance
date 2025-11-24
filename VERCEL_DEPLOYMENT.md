@@ -86,36 +86,23 @@ Once deployed, you'll get a URL like:
 
 ## 🔧 Important: Production Considerations
 
-### 1. API Proxies Won't Work in Production
+### 1. ✅ Serverless API Functions Already Configured!
 
-The Vite dev proxy we use for Yahoo Finance and CoinGecko **only works locally**.
+This project **already includes serverless API functions** in the `/api` directory that handle all Yahoo Finance and cryptocurrency API calls. **No CORS configuration needed!**
 
-**On Vercel, you'll see CORS errors** for:
-- Yahoo Finance API calls
-- CoinGecko API calls
+The serverless functions will automatically deploy to Vercel and handle:
+- Stock price quotes (`/api/stock-price`)
+- Historical price data (`/api/stock-history`)
+- Stock metadata (`/api/stock-metadata`)
+- Cryptocurrency prices (`/api/crypto-price`)
+- Cryptocurrency history (`/api/crypto-history`)
+- Exchange rates (`/api/exchange-rate`)
 
-**Solution Options:**
+**How it works:**
+- **Local development**: Vite proxy forwards requests to Yahoo Finance
+- **Production (Vercel)**: Serverless functions call Yahoo Finance directly (no CORS issues!)
 
-#### Option A: Use Serverless Functions (Recommended)
-
-Create API routes in Vercel to proxy the requests:
-
-1. Create `/api` folder in your project
-2. Add serverless functions for each API
-3. Update your code to call `/api/yahoo` instead of direct Yahoo URLs
-
-I can help you set this up if needed!
-
-#### Option B: Use a Third-Party Proxy Service
-
-- Use services like `cors-anywhere` or similar
-- Not recommended for production (unreliable)
-
-#### Option C: Local-Only Mode
-
-- Keep the app as-is
-- Users must run `npm run dev` locally
-- Good for personal use only
+**No additional configuration required!** Just deploy and it works.
 
 ---
 
@@ -155,7 +142,8 @@ Vercel will detect the push and deploy automatically within 1-2 minutes.
 
 **Error**: White screen, no content
 - **Fix**: Check browser console for errors
-- Likely CORS issues with APIs (see API Proxy section above)
+- Check Vercel function logs for API errors
+- Ensure serverless functions deployed correctly (check Vercel dashboard)
 
 ### Environment Variables Not Working
 
@@ -170,7 +158,7 @@ Vercel will detect the push and deploy automatically within 1-2 minutes.
 Once deployed, you should:
 
 1. ✅ Test the app thoroughly on the live URL
-2. ✅ Set up API proxies if you see CORS errors
+2. ✅ Verify stock data loads correctly (serverless functions working)
 3. ✅ Configure Firebase for cloud sync (optional)
 4. ✅ Add a custom domain (optional)
 5. ✅ Enable HTTPS (automatic on Vercel)
@@ -183,8 +171,9 @@ If you encounter issues:
 
 1. Check Vercel deployment logs (click on deployment → "View Function Logs")
 2. Check browser console (F12) for errors
-3. Try the "Redeploy" button in Vercel
-4. Contact me for serverless API setup assistance
+3. Verify serverless functions are deployed (Vercel dashboard → Functions tab)
+4. Try the "Redeploy" button in Vercel
+5. Check if Yahoo Finance is accessible from Vercel's servers (some regions may be blocked)
 
 ---
 

@@ -28,15 +28,7 @@ const COINGECKO_DAYS_MAP: Record<TimeRange, number | 'max'> = {
   [TimeRange.ALL]: 'max',
 };
 
-const YAHOO_PROXY_ENDPOINTS: { prefix: string; encode: boolean }[] = [
-  { prefix: '', encode: false },
-  { prefix: 'https://stuff.mufeedvh.com/https://', encode: false },
-  { prefix: 'https://api.allorigins.win/raw?url=', encode: true },
-  { prefix: 'https://cors.isomorphic-git.org/', encode: false },
-  { prefix: 'https://thingproxy.freeboard.io/fetch/', encode: false },
-  { prefix: 'https://corsproxy.io/?', encode: true },
-];
-
+// CORS proxies removed - all Yahoo Finance calls now go through serverless API routes
 const YAHOO_HEADERS: Record<string, string> = {
   'Accept': 'application/json'
 };
@@ -301,58 +293,7 @@ const getCoinGeckoId = (symbol: string): string | null => {
   );
 };
 
-const fetchYahooJson = async (url: string) => {
-  const attemptErrors: string[] = [];
-
-  for (const { prefix, encode } of YAHOO_PROXY_ENDPOINTS) {
-    const proxiedUrl = prefix ? `${prefix}${encode ? encodeURIComponent(url) : url}` : url;
-    
-    try {
-      const response = await fetch(proxiedUrl, { headers: YAHOO_HEADERS, cache: 'no-store' });
-      if (!response.ok) {
-        attemptErrors.push(`${proxiedUrl} → HTTP ${response.status}`);
-        continue;
-      }
-      const text = await response.text();
-      if (!text) {
-        attemptErrors.push(`${proxiedUrl} → empty body`);
-        continue;
-      }
-      try {
-        return JSON.parse(text);
-      } catch (parseError) {
-        attemptErrors.push(`${proxiedUrl} → invalid JSON (${(parseError as Error).message})`);
-      }
-    } catch (error) {
-      attemptErrors.push(`${proxiedUrl} → ${(error as Error).message}`);
-    }
-  }
-
-  console.warn('Yahoo Finance request failed via all proxies:', attemptErrors.join(' | '));
-  throw new Error('Yahoo Finance request failed across all proxy attempts.');
-};
-
-const fetchYahooChartResult = async (symbol: string, range: string, interval: string) => {
-  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=${range}&interval=${interval}&includePrePost=false&events=div,splits`;
-  const json = await fetchYahooJson(url);
-
-  if (json?.chart?.error) {
-    throw new Error(json.chart.error.description || 'Yahoo Finance returned an error response.');
-  }
-
-  const result = json?.chart?.result?.[0];
-  if (!result) {
-    throw new Error('Yahoo Finance returned no chart data.');
-  }
-
-  return result;
-};
-
-const fetchYahooQuoteSnapshot = async (symbol: string) => {
-  const url = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(symbol)}`;
-  const json = await fetchYahooJson(url);
-  return json?.quoteResponse?.result?.[0];
-};
+// All Yahoo Finance calls now go through serverless API routes to avoid CORS issues
 
 // CoinGecko direct fetch helpers (used as fallback)
 const fetchCoinGeckoPriceDirect = async (coinId: string, originalSymbol?: string): Promise<StockQuote> => {
@@ -474,66 +415,16 @@ export const fetchStockQuote = async (symbol: string): Promise<StockQuote> => {
       }
     }
   } else {
-    // Stocks/ETFs: first try serverless API
+    // Stocks/ETFs: use serverless API (no fallback to avoid CORS issues)
     try {
       const quote = await fetchStockQuoteFromApi(normalized);
       priceCache.set(normalized, { value: quote, expires: now + PRICE_CACHE_TTL_MS });
       return quote;
     } catch (apiError) {
-      console.warn(`Stock API fetch failed for ${normalized}:`, (apiError as Error).message);
+      console.error(`Stock API fetch failed for ${normalized}:`, (apiError as Error).message);
+      throw new Error(`Failed to fetch stock quote for ${normalized}. Please ensure the serverless API is deployed and working.`);
     }
   }
-
-  // Fallback: direct Yahoo Finance fetch
-  const chartResult = await fetchYahooChartResult(normalized, '1d', '1d');
-  const meta = chartResult.meta ?? {};
-  const indicator = chartResult.indicators?.quote?.[0] ?? {};
-  const closes = indicator.close || [];
-  const latestClose = closes[closes.length - 1];
-
-  const price = typeof meta.regularMarketPrice === 'number'
-    ? Number(meta.regularMarketPrice)
-    : typeof latestClose === 'number'
-      ? Number(latestClose)
-      : null;
-
-  if (price == null || Number.isNaN(price)) {
-    throw new Error(`Yahoo Finance returned invalid price data for ${normalized}.`);
-  }
-
-  const prevClose = typeof meta.chartPreviousClose === 'number'
-    ? Number(meta.chartPreviousClose)
-    : typeof meta.previousClose === 'number'
-      ? Number(meta.previousClose)
-      : (typeof closes[closes.length - 2] === 'number' ? Number(closes[closes.length - 2]) : null);
-
-  let changePercent = prevClose && prevClose !== 0 ? ((price - prevClose) / prevClose) * 100 : 0;
-  let companyName = meta.symbol || normalized;
-
-  try {
-    const snapshot = await fetchYahooQuoteSnapshot(normalized);
-    if (snapshot) {
-      companyName = snapshot.longName || snapshot.shortName || companyName;
-      if (typeof snapshot.regularMarketChangePercent === 'number') {
-        changePercent = Number(snapshot.regularMarketChangePercent);
-      }
-    }
-  } catch (error) {
-    console.warn(`Failed to fetch Yahoo quote snapshot for ${normalized}:`, (error as Error).message);
-  }
-
-  const quote: StockQuote = {
-    price: Number(price),
-    changePercent,
-    name: companyName,
-    currency: (meta.currency || 'USD').toUpperCase(),
-    exchange: meta.exchangeName || '',
-    timestamp: Date.now(),
-  };
-
-  priceCache.set(normalized, { value: quote, expires: now + PRICE_CACHE_TTL_MS });
-
-  return quote;
 };
 
 export const getInitialPortfolio = (): StockHolding[] => [
@@ -737,55 +628,9 @@ export const fetchHistoricalPrices = async (symbol: string, range: TimeRange): P
     try {
       return await fetchStockHistoryFromApi(normalized, range);
     } catch (apiError) {
-      console.warn(`Stock history API failed for ${normalized}:`, (apiError as Error).message);
+      console.error(`Stock history API failed for ${normalized}:`, (apiError as Error).message);
+      throw new Error(`Failed to fetch stock history for ${normalized}. Please ensure the serverless API is deployed and working.`);
     }
-
-    const config = RANGE_MAP[range] || RANGE_MAP[TimeRange.MONTH];
-    const result = await fetchYahooChartResult(normalized, config.range, config.interval);
-
-    const timestamps: number[] = result.timestamp || [];
-    const quote = result.indicators?.quote?.[0] || {};
-    const closes: (number | null)[] = quote.close || [];
-    const opens: (number | null)[] = quote.open || [];
-    const highs: (number | null)[] = quote.high || [];
-    const lows: (number | null)[] = quote.low || [];
-    const volumes: (number | null)[] = quote.volume || [];
-
-    if (!timestamps.length || !closes.length) {
-      throw new Error('Yahoo Finance returned an empty price series.');
-    }
-
-    const points = timestamps
-      .map((timestamp, idx) => {
-        const close = closes[idx];
-        if (typeof close !== 'number') return null;
-        return {
-          date: formatTimestampLabel(timestamp, config.interval),
-          timestamp,
-          price: Number(close.toFixed(2)),
-          close: Number(close.toFixed(2)),
-          open: typeof opens[idx] === 'number' ? Number((opens[idx] as number).toFixed(2)) : null,
-          high: typeof highs[idx] === 'number' ? Number((highs[idx] as number).toFixed(2)) : null,
-          low: typeof lows[idx] === 'number' ? Number((lows[idx] as number).toFixed(2)) : null,
-          volume: typeof volumes[idx] === 'number' ? Number(volumes[idx]) : null,
-        };
-      })
-      .filter((point): point is PricePoint => Boolean(point));
-
-    if (!points.length) {
-      throw new Error('Yahoo Finance returned no usable price points.');
-    }
-
-    const lastTimestamp = result.meta?.regularMarketTime || timestamps[timestamps.length - 1];
-    const lastUpdated = lastTimestamp ? new Date(lastTimestamp * 1000).toISOString() : new Date().toISOString();
-    const currency = (result.meta?.currency || 'USD').toUpperCase();
-
-    return {
-      data: points,
-      lastUpdated,
-      source: 'Yahoo Finance',
-      currency,
-    };
   })();
 
   historicalInFlight.set(cacheKey, fetchPromise);
@@ -820,27 +665,18 @@ export const fetchStockMetadata = async (symbol: string): Promise<StockMetadata>
     metadataCache.set(normalized, { value: metadata, expires: now + METADATA_CACHE_TTL_MS });
     return metadata;
   } catch (apiError) {
-    console.warn(`Metadata API failed for ${normalized}:`, (apiError as Error).message);
+    console.error(`Metadata API failed for ${normalized}:`, (apiError as Error).message);
+    // Return null metadata instead of failing completely
+    const metadata: StockMetadata = {
+      symbol: normalized,
+      sector: null,
+      industry: null,
+      country: null,
+      category: null,
+    };
+    metadataCache.set(normalized, { value: metadata, expires: now + METADATA_CACHE_TTL_MS });
+    return metadata;
   }
-
-  const url = `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(normalized)}?modules=assetProfile,fundProfile,summaryProfile`;
-  const json = await fetchYahooJson(url);
-  const summary = json?.quoteSummary?.result?.[0];
-  const assetProfile = summary?.assetProfile;
-  const fundProfile = summary?.fundProfile;
-  const summaryProfile = summary?.summaryProfile;
-
-  const metadata: StockMetadata = {
-    symbol: normalized,
-    sector: assetProfile?.sector ?? summaryProfile?.sector ?? null,
-    industry: assetProfile?.industry ?? summaryProfile?.industry ?? null,
-    country: assetProfile?.country ?? summaryProfile?.country ?? null,
-    category: fundProfile?.categoryName ?? fundProfile?.investmentStyle ?? null,
-  };
-
-  metadataCache.set(normalized, { value: metadata, expires: now + METADATA_CACHE_TTL_MS });
-
-  return metadata;
 };
 
 export const fetchMarketNews = async (): Promise<NewsItem[]> => {

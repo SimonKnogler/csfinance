@@ -1,39 +1,49 @@
 # Real Stock Data (Yahoo-only) 🚀
 
 FinanceCS now fetches every quote and price series directly from
-**Yahoo Finance**. There are no API keys or third-party vendors to
-configure—the entire pipeline lives in `services/yahooFinanceService.ts`.
+**Yahoo Finance** through **serverless API routes**. There are no API keys or third-party vendors to
+configure—the backend API handles all Yahoo Finance requests.
 
 ---
 
 ## 🔧 How the New Pipeline Works
 
-1. We call `https://query1.finance.yahoo.com/v7/finance/quote` for
-   current prices.
-2. Price charts come from
-   `https://query1.finance.yahoo.com/v8/finance/chart/{symbol}`.
-3. Each request is attempted through several public CORS-safe proxies
-   (AllOrigins, ThingProxy, corsproxy.io, direct). The first one that
-   returns valid JSON wins.
-4. The UI shows “Source: Yahoo Finance” next to the stock chart along
+1. **Frontend** (`services/yahooFinanceService.ts`) calls serverless API routes:
+   - `/api/stock-price` for current stock prices
+   - `/api/stock-history` for historical price charts
+   - `/api/stock-metadata` for company information
+   - `/api/crypto-price` and `/api/crypto-history` for cryptocurrency data
+
+2. **Backend** (serverless functions in `api/` directory) call Yahoo Finance directly:
+   - No CORS issues since they run server-side
+   - Yahoo Finance endpoints: `query1.finance.yahoo.com` and `query2.finance.yahoo.com`
+   - Crypto data from Binance and CoinGecko APIs
+
+3. The UI shows "Source: Yahoo Finance" next to the stock chart along
    with the last refresh timestamp.
 
-If Yahoo responds with malformed or empty data, the chart simply shows
-an error instead of fake/simulated lines.
+**Important**: CORS proxies have been completely removed. All Yahoo Finance calls now go through the serverless API routes to avoid CORS errors in production.
 
 ---
 
 ## ✅ What You Need to Configure
 
-Nothing. Just run the app:
+### For Local Development:
 
 ```bash
 npm install
-npm run dev -- --port 3001
+npm run dev
 ```
 
-Then open `http://localhost:3001`, go to **Portfolio**, click any stock,
-and you’ll see real Yahoo data.
+The Vite dev server includes proxy configuration that forwards API calls to Yahoo Finance.
+
+### For Production (Vercel):
+
+Deploy to Vercel - the serverless functions in the `api/` directory will automatically handle all Yahoo Finance requests:
+
+```bash
+vercel deploy
+```
 
 ---
 
@@ -51,29 +61,22 @@ anymore.
 
 ## 🔍 Verification Checklist
 
-1. Open DevTools → Network tab. You should see calls to
-   `query1.finance.yahoo.com`.
-2. Compare the chart with Yahoo’s public site – timestamps and prices
+1. Open DevTools → Network tab. You should see calls to `/api/stock-price`, `/api/stock-history`, etc.
+2. The serverless functions will call Yahoo Finance directly (no CORS issues).
+3. Compare the chart with Yahoo's public site – timestamps and prices
    should match.
-3. Watch the console for messages like “Yahoo Finance request failed via
-   all proxies” if something blocks the fetch.
 
 ---
 
-## 🌐 Customizing Proxies
+## 🌐 Architecture Notes
 
-Some enterprise networks/VPNs block public proxy hosts. If the chart
-fails to load, edit `YAHOO_PROXY_ENDPOINTS` in
-`services/yahooFinanceService.ts` and add your own endpoint, for example:
+**No more CORS proxy configuration needed!** The old system tried to use multiple public CORS proxies (AllOrigins, ThingProxy, etc.) which were unreliable and often blocked.
 
-```ts
-const YAHOO_PROXY_ENDPOINTS = [
-  { prefix: 'https://your-company-proxy.example/fetch/', encode: false },
-  { prefix: '', encode: false }, // direct fallback
-];
-```
-
-Restart the dev server after editing.
+The new architecture:
+- **Frontend → Serverless API Routes → Yahoo Finance**
+- All API calls go through backend serverless functions (no CORS issues!)
+- Local development uses Vite's built-in proxy (configured in `vite.config.ts`)
+- Production deployment uses Vercel serverless functions (automatically deployed from `api/` directory)
 
 ---
 
@@ -81,20 +84,19 @@ Restart the dev server after editing.
 
 | Symptom | Fix |
 | --- | --- |
-| Chart shows “Unable to load Yahoo Finance data.” | Check DevTools console for the exact proxy that failed. Add/replace proxies as described above. |
-| Prices look stale | Perform a hard refresh (Ctrl+Shift+R). Yahoo occasionally caches aggressively per IP. |
-| Quotes fail when adding a new holding | The Yahoo API couldn’t find that symbol. Confirm the ticker on finance.yahoo.com. |
+| Chart shows "Failed to fetch stock history" | Ensure serverless functions are deployed. Check Vercel deployment logs. |
+| Prices look stale | Perform a hard refresh (Ctrl+Shift+R). Caching is set to 1 minute for prices, 15 minutes for history. |
+| Quotes fail when adding a new holding | The Yahoo API couldn't find that symbol. Confirm the ticker on finance.yahoo.com. |
+| API routes returning 500 errors | Check if Yahoo Finance is accessible from your server. Some cloud providers may block financial APIs. |
 
 ---
 
 ## 📚 Need Offline Data?
 
-If you ever need a demo without internet access, temporarily replace
-`fetchYahooJson` inside `services/yahooFinanceService.ts` with a function
-that returns static JSON, or mock the response in `loadHoldingHistory`.
+If you need a demo without internet access, you can mock the API responses by creating test fixtures in your development environment.
 
 ---
 
-Yahoo-only integration keeps things simple, free, and maintenance-light.
+Yahoo-only integration through serverless APIs keeps things simple, free, and maintenance-light.
 Enjoy the real charts! 📈
 

@@ -1,15 +1,6 @@
 const USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36';
 
-const YAHOO_PROXIES = [
-  { prefix: '', encode: false },
-  { prefix: 'https://stuff.mufeedvh.com/https://', encode: false },
-  { prefix: 'https://api.allorigins.win/raw?url=', encode: true },
-  { prefix: 'https://cors.isomorphic-git.org/', encode: false },
-  { prefix: 'https://thingproxy.freeboard.io/fetch/', encode: false },
-  { prefix: 'https://corsproxy.io/?', encode: true },
-];
-
 const sendJSON = (res, statusCode, payload) => {
   res.statusCode = statusCode;
   res.setHeader('Content-Type', 'application/json');
@@ -17,35 +8,24 @@ const sendJSON = (res, statusCode, payload) => {
 };
 
 const fetchYahooJson = async (url) => {
-  const attempts = [];
-  for (const proxy of YAHOO_PROXIES) {
-    const proxiedUrl = proxy.prefix ? `${proxy.prefix}${proxy.encode ? encodeURIComponent(url) : url}` : url;
-    try {
-      const response = await fetch(proxiedUrl, {
-        headers: {
-          'User-Agent': USER_AGENT,
-          Accept: 'application/json',
-        },
-      });
-      if (!response.ok) {
-        attempts.push(`${proxiedUrl} → HTTP ${response.status}`);
-        continue;
-      }
-      const text = await response.text();
-      if (!text) {
-        attempts.push(`${proxiedUrl} → empty body`);
-        continue;
-      }
-      try {
-        return JSON.parse(text);
-      } catch (err) {
-        attempts.push(`${proxiedUrl} → JSON parse error ${err.message}`);
-      }
-    } catch (error) {
-      attempts.push(`${proxiedUrl} → ${(error && error.message) || 'network error'}`);
-    }
+  // Serverless functions don't need CORS proxies - call Yahoo directly
+  const response = await fetch(url, {
+    headers: {
+      'User-Agent': USER_AGENT,
+      Accept: 'application/json',
+    },
+  });
+  
+  if (!response.ok) {
+    throw new Error(`Yahoo Finance API error: HTTP ${response.status}`);
   }
-  throw new Error(`Yahoo Finance price request failed via all proxies: ${attempts.join(' | ')}`);
+  
+  const text = await response.text();
+  if (!text) {
+    throw new Error('Yahoo Finance returned empty response');
+  }
+  
+  return JSON.parse(text);
 };
 
 module.exports = async (req, res) => {
