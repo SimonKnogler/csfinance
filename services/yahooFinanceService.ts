@@ -272,8 +272,13 @@ const fetchStockMetadataFromApi = async (symbol: string): Promise<StockMetadata>
 // Helper: Check if symbol is a crypto
 const isCryptoSymbol = (symbol: string): boolean => {
   const upper = symbol.toUpperCase();
-  // Check if symbol is in the map directly or with -USD suffix
-  return upper in CRYPTO_SYMBOL_MAP || `${upper}-USD` in CRYPTO_SYMBOL_MAP;
+  const base = upper.split('-')[0];
+  return (
+    upper in CRYPTO_SYMBOL_MAP ||
+    `${upper}-USD` in CRYPTO_SYMBOL_MAP ||
+    base in CRYPTO_SYMBOL_MAP ||
+    `${base}-USD` in CRYPTO_SYMBOL_MAP
+  );
 };
 
 const getCryptoSymbolKey = (symbol: string): string => symbol.toUpperCase().split('-')[0];
