@@ -270,9 +270,12 @@ const fetchStockMetadataFromApi = async (symbol: string): Promise<StockMetadata>
 };
 
 // Helper: Check if symbol is a crypto
+const normalizeSymbol = (symbol: string) => symbol.toUpperCase().trim();
+const extractBaseSymbol = (symbol: string) => normalizeSymbol(symbol).split('-')[0];
+
 const isCryptoSymbol = (symbol: string): boolean => {
-  const upper = symbol.toUpperCase();
-  const base = upper.split('-')[0];
+  const upper = normalizeSymbol(symbol);
+  const base = extractBaseSymbol(symbol);
   return (
     upper in CRYPTO_SYMBOL_MAP ||
     `${upper}-USD` in CRYPTO_SYMBOL_MAP ||
@@ -281,13 +284,19 @@ const isCryptoSymbol = (symbol: string): boolean => {
   );
 };
 
-const getCryptoSymbolKey = (symbol: string): string => symbol.toUpperCase().split('-')[0];
+const getCryptoSymbolKey = (symbol: string): string => extractBaseSymbol(symbol);
 
 // Helper: Get CoinGecko ID from symbol
 const getCoinGeckoId = (symbol: string): string | null => {
-  const upper = symbol.toUpperCase();
-  // Try direct match first, then with -USD suffix
-  return CRYPTO_SYMBOL_MAP[upper] || CRYPTO_SYMBOL_MAP[`${upper}-USD`] || null;
+  const upper = normalizeSymbol(symbol);
+  const base = extractBaseSymbol(symbol);
+  return (
+    CRYPTO_SYMBOL_MAP[upper] ||
+    CRYPTO_SYMBOL_MAP[`${upper}-USD`] ||
+    CRYPTO_SYMBOL_MAP[base] ||
+    CRYPTO_SYMBOL_MAP[`${base}-USD`] ||
+    null
+  );
 };
 
 const fetchYahooJson = async (url: string) => {
@@ -436,7 +445,11 @@ export const fetchStockQuote = async (symbol: string): Promise<StockQuote> => {
   const now = Date.now();
   const cached = priceCache.get(normalized);
   if (cached && cached.expires > now) {
-    return cached.value;
+    if (isCryptoSymbol(normalized) && cached.value?.source === 'Yahoo Finance') {
+      priceCache.delete(normalized);
+    } else {
+      return cached.value;
+    }
   }
 
   // Crypto workflow
@@ -692,7 +705,11 @@ export const fetchHistoricalPrices = async (symbol: string, range: TimeRange): P
   const now = Date.now();
   const cached = historicalCache.get(cacheKey);
   if (cached && cached.expires > now) {
-    return cached.value;
+    if (isCryptoSymbol(normalized) && cached.value?.source === 'Yahoo Finance') {
+      historicalCache.delete(cacheKey);
+    } else {
+      return cached.value;
+    }
   }
 
   const pending = historicalInFlight.get(cacheKey);
