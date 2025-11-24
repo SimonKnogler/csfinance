@@ -260,33 +260,6 @@ export const Portfolio: React.FC<PortfolioProps> = ({ privacy }) => {
           setHoldingHistory(result.data);
           setHoldingLastUpdated(result.lastUpdated);
           setHoldingSource(result.source);
-          const latestPoint = result.data[result.data.length - 1];
-          const prevPoint = result.data.length > 1 ? result.data[result.data.length - 2] : latestPoint;
-          const latestPrice = latestPoint
-            ? (latestPoint.price ?? latestPoint.close ?? latestPoint.open ?? null)
-            : null;
-          const prevPrice = prevPoint
-            ? (prevPoint.price ?? prevPoint.close ?? prevPoint.open ?? null)
-            : null;
-
-          if (latestPrice != null) {
-            const computedChange =
-              prevPrice && prevPrice !== 0
-                ? ((latestPrice - prevPrice) / prevPrice) * 100
-                : 0;
-
-            setHoldings(prev =>
-              prev.map(h =>
-                h.id === selectedHolding.id
-                  ? {
-                      ...h,
-                      currentPrice: latestPrice,
-                      dayChangePercent: computedChange,
-                    }
-                  : h
-              )
-            );
-          }
         }
       } catch (error: any) {
         if (!cancelled) {
@@ -305,7 +278,7 @@ export const Portfolio: React.FC<PortfolioProps> = ({ privacy }) => {
     return () => {
       cancelled = true;
     };
-  }, [selectedHolding?.id, holdingTimeRange, holdings]);
+  }, [selectedHolding, holdingTimeRange]);
 
   const filteredHoldings = useMemo(() => {
     if (activeTab === 'Total') return holdings;
@@ -422,6 +395,12 @@ export const Portfolio: React.FC<PortfolioProps> = ({ privacy }) => {
   }, [filteredHoldings, cashHoldings, activeTab]);
 
   const lastUpdatedLabel = holdingLastUpdated ? new Date(holdingLastUpdated).toLocaleString() : null;
+  const latestHoldingPrice = useMemo(() => {
+    if (holdingHistory.length > 0) {
+      return holdingHistory[holdingHistory.length - 1].price;
+    }
+    return selectedHolding?.currentPrice || 0;
+  }, [holdingHistory, selectedHolding]);
 
   // --- ACTIONS ---
 
@@ -783,13 +762,13 @@ export const Portfolio: React.FC<PortfolioProps> = ({ privacy }) => {
                       <div>
                         <p className="text-slate-400">Current Price</p>
                         <p className="text-white font-semibold">
-                          <Money value={selectedHolding.currentPrice} privacy={privacy} />
+                          <Money value={latestHoldingPrice} privacy={privacy} />
                         </p>
                       </div>
                       <div>
                         <p className="text-slate-400">Value</p>
                         <p className="text-white font-semibold">
-                          <Money value={selectedHolding.currentPrice * selectedHolding.shares} privacy={privacy} />
+                          <Money value={latestHoldingPrice * selectedHolding.shares} privacy={privacy} />
                         </p>
                       </div>
                       <div>
