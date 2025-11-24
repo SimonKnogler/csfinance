@@ -260,6 +260,33 @@ export const Portfolio: React.FC<PortfolioProps> = ({ privacy }) => {
           setHoldingHistory(result.data);
           setHoldingLastUpdated(result.lastUpdated);
           setHoldingSource(result.source);
+          const latestPoint = result.data[result.data.length - 1];
+          const prevPoint = result.data.length > 1 ? result.data[result.data.length - 2] : latestPoint;
+          const latestPrice = latestPoint
+            ? (latestPoint.price ?? latestPoint.close ?? latestPoint.open ?? null)
+            : null;
+          const prevPrice = prevPoint
+            ? (prevPoint.price ?? prevPoint.close ?? prevPoint.open ?? null)
+            : null;
+
+          if (latestPrice != null) {
+            const computedChange =
+              prevPrice && prevPrice !== 0
+                ? ((latestPrice - prevPrice) / prevPrice) * 100
+                : 0;
+
+            setHoldings(prev =>
+              prev.map(h =>
+                h.id === selectedHolding.id
+                  ? {
+                      ...h,
+                      currentPrice: latestPrice,
+                      dayChangePercent: computedChange,
+                    }
+                  : h
+              )
+            );
+          }
         }
       } catch (error: any) {
         if (!cancelled) {
