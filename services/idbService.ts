@@ -1,8 +1,8 @@
 
-import { Transaction, StockHolding, PortfolioDocument, User, CashHolding } from '../types';
+import { Transaction, StockHolding, PortfolioDocument, User, CashHolding, RealEstateProperty } from '../types';
 
 const DB_NAME = 'FinanceCSDB';
-const DB_VERSION = 2; // Incremented to add cash store
+const DB_VERSION = 3; // Incremented to add realEstate store
 
 const STORES = {
   USERS: 'users',
@@ -10,7 +10,8 @@ const STORES = {
   PORTFOLIO: 'portfolio',
   CASH: 'cash',
   DOCUMENTS: 'documents',
-  SESSION: 'session'
+  SESSION: 'session',
+  REAL_ESTATE: 'realEstate'
 };
 
 export const initDB = (): Promise<IDBDatabase> => {
@@ -46,6 +47,9 @@ export const initDB = (): Promise<IDBDatabase> => {
       }
       if (!db.objectStoreNames.contains(STORES.SESSION)) {
         db.createObjectStore(STORES.SESSION, { keyPath: 'key' });
+      }
+      if (!db.objectStoreNames.contains(STORES.REAL_ESTATE)) {
+        db.createObjectStore(STORES.REAL_ESTATE, { keyPath: 'id' });
       }
     };
   });

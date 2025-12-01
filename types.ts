@@ -118,3 +118,44 @@ export interface PortfolioDocument {
   category: 'Tax' | 'Contract' | 'Statement' | 'Other';
   data?: string; // Base64 data string for in-memory storage
 }
+
+// --- REAL ESTATE TYPES ---
+
+export interface RealEstateProperty {
+  id: string;
+  name: string;
+  address: string;
+  owner: PortfolioOwner;
+  
+  // Purchase Info
+  purchasePrice: number;
+  purchaseDate: string;
+  currentValue: number;
+  
+  // Mortgage/Loan
+  loanAmount: number;
+  interestRate: number; // Annual interest rate in %
+  loanTermYears: number;
+  monthlyPayment: number; // Tilgung + Zins
+  
+  // Monthly Breakdown
+  monthlyPrincipal: number; // Tilgung
+  monthlyInterest: number; // Zins
+  
+  // Rental Income
+  monthlyRent: number;
+  isRented: boolean;
+  
+  // Expenses
+  monthlyTaxes: number; // Grundsteuer etc.
+  monthlyInsurance: number;
+  monthlyMaintenance: number; // Rücklagen
+  monthlyHOA: number; // Hausgeld/Nebenkosten
+  
+  // Extra
+  specialRepayment: number; // Sondertilgung (yearly)
+  savingsTarget: number; // Sparwert/Rücklage Ziel
+  currentSavings: number; // Aktuelle Rücklagen
+  
+  notes?: string;
+}

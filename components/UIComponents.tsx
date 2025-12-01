@@ -25,9 +25,15 @@ export const Button: React.FC<React.ButtonHTMLAttributes<HTMLButtonElement> & { 
     );
   };
 
-export const Input: React.FC<React.InputHTMLAttributes<HTMLInputElement>> = ({ className = "", ...props }) => (
+export const Input: React.FC<React.InputHTMLAttributes<HTMLInputElement>> = ({ className = "", style, ...props }) => (
   <input 
-    className={`w-full bg-darker border border-slate-700 rounded-lg px-4 py-3 text-white focus:ring-2 focus:ring-primary focus:border-transparent outline-none transition-all placeholder-slate-500 ${className}`}
+    className={`w-full border border-slate-700 rounded-lg px-4 py-3 focus:ring-2 focus:ring-primary focus:border-transparent outline-none transition-all placeholder-slate-500 ${className}`}
+    style={{ 
+      backgroundColor: '#0f172a', 
+      color: '#ffffff',
+      caretColor: '#ffffff',
+      ...style 
+    }}
     {...props}
   />
 );

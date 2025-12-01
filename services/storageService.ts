@@ -1,5 +1,5 @@
 
-import { Transaction, StockHolding, PortfolioDocument, User, CashHolding } from '../types';
+import { Transaction, StockHolding, PortfolioDocument, User, CashHolding, RealEstateProperty } from '../types';
 import { getInitialPortfolio } from './yahooFinanceService';
 import { IDBService } from './idbService';
 import { CloudService } from './cloudService';
@@ -152,6 +152,35 @@ export const StorageService = {
       }
     }
     return await IDBService.getAll<CashHolding>('cash');
+  },
+
+  // --- REAL ESTATE ---
+  saveRealEstate: async (properties: RealEstateProperty[]) => {
+    await IDBService.clear('realEstate');
+    const localPromises = properties.map(p => IDBService.put('realEstate', p));
+    await Promise.all(localPromises);
+
+    if (CloudService.getConfig()) {
+      CloudService.saveAll('realEstate', properties)
+        .catch(e => console.error("Cloud real estate sync failed:", e));
+    }
+  },
+
+  getRealEstate: async (): Promise<RealEstateProperty[]> => {
+    if (CloudService.getConfig()) {
+      try {
+        const cloudData = await CloudService.getAll<RealEstateProperty>('realEstate');
+        if (cloudData.length > 0) {
+          await IDBService.clear('realEstate');
+          const promises = cloudData.map(p => IDBService.put('realEstate', p));
+          await Promise.all(promises);
+          return cloudData;
+        }
+      } catch (e) {
+        console.warn("Could not reach cloud for real estate, falling back to local.", e);
+      }
+    }
+    return await IDBService.getAll<RealEstateProperty>('realEstate');
   },
 
   // --- DOCUMENTS ---

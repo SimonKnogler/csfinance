@@ -19,13 +19,15 @@ import {
   Eye,
   EyeOff,
   LogOut,
-  Loader2
+  Loader2,
+  Building2
 } from 'lucide-react';
 import { Transaction, TransactionType, Category, PortfolioDocument } from './types';
 import { OverviewChart, CategoryPieChart, MonthlyBarChart } from './components/Charts';
 import { Card, Button, Input, Select, Badge, Money } from './components/UIComponents';
 import { AIInsights } from './components/AIInsights';
 import { Portfolio } from './components/Portfolio';
+import { RealEstate } from './components/RealEstate';
 import { Documents } from './components/Documents';
 import { Auth } from './components/Auth';
 import { Settings } from './components/Settings';
@@ -48,6 +50,7 @@ enum View {
   DASHBOARD = 'dashboard',
   TRANSACTIONS = 'transactions',
   PORTFOLIO = 'portfolio',
+  REAL_ESTATE = 'real-estate',
   INCOME = 'income',
   EXPENSES = 'expenses',
   DOCUMENTS = 'documents',
@@ -195,6 +198,12 @@ const AuthenticatedApp: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
             onClick={() => setActiveView(View.PORTFOLIO)} 
           />
           <SidebarItem 
+            icon={<Building2 />} 
+            label="Immobilien" 
+            active={activeView === View.REAL_ESTATE} 
+            onClick={() => setActiveView(View.REAL_ESTATE)} 
+          />
+          <SidebarItem 
             icon={<TrendingUp />} 
             label="Income" 
             active={activeView === View.INCOME} 
@@ -257,7 +266,7 @@ const AuthenticatedApp: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
               {isPrivacyMode ? <EyeOff size={20} /> : <Eye size={20} />}
             </button>
 
-            {activeView !== View.PORTFOLIO && activeView !== View.DOCUMENTS && activeView !== View.SETTINGS && (
+            {activeView !== View.PORTFOLIO && activeView !== View.REAL_ESTATE && activeView !== View.DOCUMENTS && activeView !== View.SETTINGS && (
               <Button onClick={() => setIsModalOpen(true)}>
                 <Plus className="w-4 h-4" />
                 Add Transaction
@@ -323,6 +332,12 @@ const AuthenticatedApp: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
           {activeView === View.PORTFOLIO && (
              <div className="max-w-7xl mx-auto">
                 <Portfolio privacy={isPrivacyMode} />
+             </div>
+          )}
+
+          {activeView === View.REAL_ESTATE && (
+             <div className="max-w-7xl mx-auto">
+                <RealEstate privacy={isPrivacyMode} />
              </div>
           )}
 
