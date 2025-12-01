@@ -128,8 +128,12 @@ export const Portfolio: React.FC<PortfolioProps> = ({ privacy }) => {
         const allHistory = await Promise.all(historyPromises);
         const historyMap = new Map(allHistory.map(h => [h.symbol, h.data]));
         
-        // Get MSCI data
-        const msciData = historyMap.get('URTH') || [];
+        // Portfolio start date - only show data from when all positions were bought
+        const PORTFOLIO_START_DATE = new Date('2025-10-20').getTime();
+        
+        // Get MSCI data, filtered to portfolio start date
+        const allMsciData = historyMap.get('URTH') || [];
+        const msciData = allMsciData.filter(p => p.timestamp >= PORTFOLIO_START_DATE);
         const msciBaseline = msciData.length > 0 ? msciData[0].price : 100;
         
         // Build timestamp map from all holdings
@@ -158,7 +162,10 @@ export const Portfolio: React.FC<PortfolioProps> = ({ privacy }) => {
           }
         });
         
-        const sortedTimestamps = Array.from(timestampMap.keys()).sort((a, b) => a - b);
+        const sortedTimestamps = Array.from(timestampMap.keys())
+          .filter(ts => ts >= PORTFOLIO_START_DATE) // Filter out data before portfolio start
+          .sort((a, b) => a - b);
+        
         if (!sortedTimestamps.length) {
           if (!cancelled) setHistoryData([]);
           return;
