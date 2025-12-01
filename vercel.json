@@ -4,6 +4,11 @@
   "framework": null,
   "devCommand": "vite --port $PORT",
   "installCommand": "npm install",
+  "functions": {
+    "api/*.js": {
+      "runtime": "nodejs20.x"
+    }
+  },
   "rewrites": [
     { "source": "/((?!api/).*)", "destination": "/index.html" }
   ]
