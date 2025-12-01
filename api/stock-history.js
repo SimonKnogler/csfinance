@@ -1,5 +1,4 @@
-const USER_AGENT =
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36';
+const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36';
 
 const sendJSON = (res, status, payload) => {
   res.statusCode = status;
@@ -28,27 +27,6 @@ const getIntervalForRange = (range) => {
   }
 };
 
-const fetchYahooJson = async (url) => {
-  // Serverless functions don't need CORS proxies - call Yahoo directly
-  const response = await fetch(url, {
-    headers: {
-      'User-Agent': USER_AGENT,
-      Accept: 'application/json',
-    },
-  });
-  
-  if (!response.ok) {
-    throw new Error(`Yahoo Finance API error: HTTP ${response.status}`);
-  }
-  
-  const text = await response.text();
-  if (!text) {
-    throw new Error('Yahoo Finance returned empty response');
-  }
-  
-  return JSON.parse(text);
-};
-
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Credentials', 'true');
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -68,15 +46,35 @@ module.exports = async (req, res) => {
     return;
   }
 
+  const interval = getIntervalForRange(range);
+  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=${range}&interval=${interval}`;
+
   try {
-    const interval = getIntervalForRange(range);
-    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(
-      symbol
-    )}?range=${range}&interval=${interval}`;
-    const data = await fetchYahooJson(url);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
+    
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent': USER_AGENT,
+        'Accept': 'application/json',
+      },
+      signal: controller.signal,
+    });
+    
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => 'Unknown error');
+      console.error(`Yahoo Finance API error for ${symbol}: ${response.status} - ${errorText}`);
+      sendJSON(res, response.status, { error: `Yahoo Finance API error: ${response.status}` });
+      return;
+    }
+
+    const data = await response.json();
     const result = data?.chart?.result?.[0];
 
     if (!result) {
+      console.warn(`No chart data returned for ${symbol} from Yahoo Finance`);
       sendJSON(res, 404, { error: 'No data returned' });
       return;
     }
@@ -92,10 +90,9 @@ module.exports = async (req, res) => {
     const chartData = timestamps
       .map((ts, idx) => {
         const date = new Date(ts * 1000);
-        const dateStr =
-          interval.includes('m') || interval.includes('h')
-            ? date.toISOString().slice(0, 16).replace('T', ' ')
-            : date.toISOString().split('T')[0];
+        const dateStr = interval.includes('m') || interval.includes('h')
+          ? date.toISOString().slice(0, 16).replace('T', ' ')
+          : date.toISOString().split('T')[0];
 
         return {
           date: dateStr,
@@ -117,8 +114,13 @@ module.exports = async (req, res) => {
       data: chartData,
     });
   } catch (error) {
-    console.error(`Error fetching history for ${symbol}:`, error);
-    sendJSON(res, 500, { error: 'Failed to fetch stock history' });
+    const errorMsg = error?.message || String(error);
+    console.error(`Error fetching stock history for ${symbol}:`, errorMsg, error?.stack);
+    sendJSON(res, 500, { 
+      error: 'Failed to fetch stock history',
+      details: errorMsg,
+      symbol: symbol,
+    });
   }
 };
 

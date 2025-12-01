@@ -1,31 +1,9 @@
-const USER_AGENT =
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36';
+const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36';
 
 const sendJSON = (res, statusCode, payload) => {
   res.statusCode = statusCode;
   res.setHeader('Content-Type', 'application/json');
   res.end(JSON.stringify(payload));
-};
-
-const fetchYahooJson = async (url) => {
-  // Serverless functions don't need CORS proxies - call Yahoo directly
-  const response = await fetch(url, {
-    headers: {
-      'User-Agent': USER_AGENT,
-      Accept: 'application/json',
-    },
-  });
-  
-  if (!response.ok) {
-    throw new Error(`Yahoo Finance API error: HTTP ${response.status}`);
-  }
-  
-  const text = await response.text();
-  if (!text) {
-    throw new Error('Yahoo Finance returned empty response');
-  }
-  
-  return JSON.parse(text);
 };
 
 module.exports = async (req, res) => {
@@ -46,11 +24,30 @@ module.exports = async (req, res) => {
     return;
   }
 
+  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=1d`;
+
   try {
-    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(
-      symbol
-    )}?interval=1d&range=1d`;
-    const data = await fetchYahooJson(url);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent': USER_AGENT,
+        'Accept': 'application/json',
+      },
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => 'Unknown error');
+      console.error(`Yahoo Finance API error for ${symbol}: ${response.status} - ${errorText}`);
+      sendJSON(res, response.status, { error: `Failed to fetch: ${response.status}`, details: errorText });
+      return;
+    }
+
+    const data = await response.json();
     const result = data?.chart?.result?.[0];
 
     if (!result) {
@@ -67,12 +64,30 @@ module.exports = async (req, res) => {
       return;
     }
 
-    const quoteJson = await fetchYahooJson(
-      `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(symbol)}`
-    );
-    const quote = quoteJson?.quoteResponse?.result?.[0];
-    const changePercent = quote ? Number(quote.regularMarketChangePercent ?? 0) : 0;
-    const name = quote?.longName || quote?.shortName || symbol.toUpperCase();
+    const controller2 = new AbortController();
+    const timeoutId2 = setTimeout(() => controller2.abort(), 10000);
+
+    const quoteResponse = await fetch(`https://query1.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(symbol)}`, {
+      headers: {
+        'User-Agent': USER_AGENT,
+        'Accept': 'application/json',
+      },
+      signal: controller2.signal,
+    });
+
+    clearTimeout(timeoutId2);
+
+    let changePercent = 0;
+    let name = symbol.toUpperCase();
+
+    if (quoteResponse.ok) {
+      const quoteJson = await quoteResponse.json();
+      const quote = quoteJson?.quoteResponse?.result?.[0];
+      if (quote) {
+        changePercent = Number(quote.regularMarketChangePercent ?? 0);
+        name = quote.longName || quote.shortName || name;
+      }
+    }
 
     sendJSON(res, 200, {
       symbol: symbol.toUpperCase(),
@@ -84,8 +99,13 @@ module.exports = async (req, res) => {
       name,
     });
   } catch (error) {
-    console.error(`Error fetching price for ${symbol}:`, error);
-    sendJSON(res, 500, { error: 'Failed to fetch stock price' });
+    const errorMsg = error?.message || String(error);
+    console.error(`Error fetching stock price for ${symbol}:`, errorMsg, error?.stack);
+    sendJSON(res, 500, { 
+      error: 'Failed to fetch stock price',
+      details: errorMsg,
+      symbol: symbol,
+    });
   }
 };
 
