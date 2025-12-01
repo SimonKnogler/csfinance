@@ -47,6 +47,7 @@ type PortfolioHistoryPoint = {
   Carolina: number;
   Total: number;
   MSCI: number;
+  msciBaseline?: number;
   prices?: Record<string, number>;
 };
 
@@ -305,6 +306,7 @@ export const Portfolio: React.FC<PortfolioProps> = ({ privacy }) => {
       Total: 0,
       [PortfolioOwner.ME]: 0,
       [PortfolioOwner.CAROLINA]: 0,
+      [PortfolioOwner.JOINT]: 0,
     };
 
     holdings.forEach(holding => {
@@ -319,6 +321,7 @@ export const Portfolio: React.FC<PortfolioProps> = ({ privacy }) => {
       Total: holdings,
       [PortfolioOwner.ME]: holdings.filter(h => h.owner === PortfolioOwner.ME),
       [PortfolioOwner.CAROLINA]: holdings.filter(h => h.owner === PortfolioOwner.CAROLINA),
+      [PortfolioOwner.JOINT]: holdings.filter(h => h.owner === PortfolioOwner.JOINT),
     };
 
     const computeOwnerPerf = (point: PortfolioHistoryPoint, owner: OwnerKey) => {
@@ -890,7 +893,7 @@ export const Portfolio: React.FC<PortfolioProps> = ({ privacy }) => {
       )}
 
       {subView === SubView.PROJECTIONS && (
-        <WealthCalculator currentTotal={metrics.totalValue} privacy={privacy} />
+        <WealthCalculator currentTotal={metrics.netWorth} privacy={privacy} />
       )}
 
       {/* ADD/EDIT MODAL */}

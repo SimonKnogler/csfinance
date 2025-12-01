@@ -1,7 +1,7 @@
 import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
 import { Transaction, Category } from "../types";
 
-const apiKey = import.meta.env.VITE_GEMINI_API_KEY || '';
+const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY || '';
 const ai = apiKey ? new GoogleGenerativeAI(apiKey) : null;
 
 export const autoCategorizeTransaction = async (description: string): Promise<string> => {

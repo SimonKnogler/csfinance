@@ -1,33 +1,22 @@
-const sendJSON = (res, status, payload) => {
-  res.statusCode = status;
-  res.setHeader('Content-Type', 'application/json');
-  res.end(JSON.stringify(payload));
-};
+import { NextRequest, NextResponse } from 'next/server';
 
-const toYahooSymbol = (symbol) => {
+const toYahooSymbol = (symbol: string) => {
   const upper = symbol.toUpperCase();
   if (upper.includes('-')) return upper;
   return `${upper}-USD`;
 };
 
-const fetchFromBinance = async (symbol) => {
+async function fetchFromBinance(symbol: string) {
   const base = symbol.toUpperCase().replace('-USD', '');
   const pair = `${base}USDT`;
   const tickerUrl = `https://api.binance.com/api/v3/ticker/24hr?symbol=${pair}`;
 
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 10000);
-
-  const tickerResponse = await fetch(tickerUrl, { 
+  const tickerResponse = await fetch(tickerUrl, {
     headers: { Accept: 'application/json' },
-    signal: controller.signal,
   });
 
-  clearTimeout(timeoutId);
-
   if (!tickerResponse.ok) {
-    const errorText = await tickerResponse.text().catch(() => 'Unknown error');
-    throw new Error(`Binance ticker request failed: ${tickerResponse.status} - ${errorText}`);
+    throw new Error(`Binance ticker request failed: ${tickerResponse.status}`);
   }
 
   const ticker = await tickerResponse.json();
@@ -37,13 +26,12 @@ const fetchFromBinance = async (symbol) => {
 
   const priceUSDT = Number(ticker.lastPrice);
   const changePercent = Number(ticker.priceChangePercent ?? 0);
-  const exchange = ticker.lastId ? 'Binance' : 'Binance';
 
-  // Convert USDT to EUR using EURUSDT pair (1 EUR in USDT)
+  // Convert USDT to EUR
   let price = priceUSDT;
   let currency = 'USDT';
   try {
-    const eurTicker = await fetch('https://api.binance.com/api/v3/ticker/price?symbol=EURUSDT', { headers: { Accept: 'application/json' } });
+    const eurTicker = await fetch('https://api.binance.com/api/v3/ticker/price?symbol=EURUSDT');
     if (eurTicker.ok) {
       const { price: eurPrice } = await eurTicker.json();
       const eurUsdt = Number(eurPrice);
@@ -52,8 +40,8 @@ const fetchFromBinance = async (symbol) => {
         currency = 'EUR';
       }
     }
-  } catch (error) {
-    // silently fall back to USDT
+  } catch {
+    // Fall back to USDT
   }
 
   return {
@@ -62,29 +50,22 @@ const fetchFromBinance = async (symbol) => {
     currency,
     timestamp: Date.now(),
     changePercent,
-    exchange,
+    exchange: 'Binance',
     name: base,
     source: 'Binance',
   };
-};
+}
 
-const fetchFromCryptoCompare = async (symbol) => {
+async function fetchFromCryptoCompare(symbol: string) {
   const base = symbol.toUpperCase().replace('-USD', '');
   const url = `https://min-api.cryptocompare.com/data/pricemultifull?fsyms=${base}&tsyms=EUR`;
 
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 10000);
-
-  const response = await fetch(url, { 
+  const response = await fetch(url, {
     headers: { Accept: 'application/json' },
-    signal: controller.signal,
   });
 
-  clearTimeout(timeoutId);
-
   if (!response.ok) {
-    const errorText = await response.text().catch(() => 'Unknown error');
-    throw new Error(`CryptoCompare request failed: ${response.status} - ${errorText}`);
+    throw new Error(`CryptoCompare request failed: ${response.status}`);
   }
 
   const data = await response.json();
@@ -105,47 +86,38 @@ const fetchFromCryptoCompare = async (symbol) => {
     name: display?.FROMSYMBOL || symbol.toUpperCase(),
     source: 'CryptoCompare',
   };
-};
+}
 
-export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'X-Requested-With, Content-Type, Accept');
+export async function GET(request: NextRequest) {
+  const searchParams = request.nextUrl.searchParams;
+  const rawSymbol = searchParams.get('symbol')?.trim();
 
-  if (req.method === 'OPTIONS') {
-    sendJSON(res, 200, { ok: true });
-    return;
-  }
-
-  const rawSymbol = (req.query.symbol || '').toString().trim();
   if (!rawSymbol) {
-    sendJSON(res, 400, { error: 'Symbol required' });
-    return;
+    return NextResponse.json({ error: 'Symbol required' }, { status: 400 });
   }
 
   const yahooSymbol = toYahooSymbol(rawSymbol);
 
+  // Try Binance first
   try {
     const payload = await fetchFromBinance(yahooSymbol);
-    sendJSON(res, 200, payload);
-    return;
+    return NextResponse.json(payload);
   } catch (error) {
-    const errorMsg = error?.message || String(error);
+    const errorMsg = error instanceof Error ? error.message : String(error);
     console.warn(`Binance crypto price failed for ${rawSymbol}:`, errorMsg);
   }
 
+  // Fallback to CryptoCompare
   try {
     const fallbackPayload = await fetchFromCryptoCompare(yahooSymbol);
-    sendJSON(res, 200, fallbackPayload);
+    return NextResponse.json(fallbackPayload);
   } catch (error) {
-    const errorMsg = error?.message || String(error);
+    const errorMsg = error instanceof Error ? error.message : String(error);
     console.error(`All sources failed for crypto price ${rawSymbol}:`, errorMsg);
-    sendJSON(res, 500, { 
-      error: 'Failed to fetch crypto price from all sources',
-      details: errorMsg,
-      symbol: rawSymbol.toUpperCase(),
-    });
+    return NextResponse.json(
+      { error: 'Failed to fetch crypto price from all sources', details: errorMsg, symbol: rawSymbol.toUpperCase() },
+      { status: 500 }
+    );
   }
-};
+}
 

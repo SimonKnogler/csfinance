@@ -1,32 +1,17 @@
+import { NextRequest, NextResponse } from 'next/server';
+
 const USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.5 Safari/605.1.15';
 
-const sendJSON = (res, status, payload) => {
-  res.statusCode = status;
-  res.setHeader('Content-Type', 'application/json');
-  res.end(JSON.stringify(payload));
-};
+export async function GET(request: NextRequest) {
+  const searchParams = request.nextUrl.searchParams;
+  const symbol = searchParams.get('symbol')?.trim();
 
-export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'X-Requested-With, Content-Type, Accept');
-
-  if (req.method === 'OPTIONS') {
-    sendJSON(res, 200, { ok: true });
-    return;
-  }
-
-  const symbol = (req.query.symbol || '').toString().trim();
   if (!symbol) {
-    sendJSON(res, 400, { error: 'Symbol required' });
-    return;
+    return NextResponse.json({ error: 'Symbol required' }, { status: 400 });
   }
 
   const upperSymbol = symbol.toUpperCase();
-  const url = `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(
-    upperSymbol
-  )}?modules=assetProfile,fundProfile,summaryProfile`;
+  const url = `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(upperSymbol)}?modules=assetProfile,fundProfile,summaryProfile`;
 
   try {
     const response = await fetch(url, {
@@ -37,8 +22,10 @@ export default async function handler(req, res) {
     });
 
     if (!response.ok) {
-      sendJSON(res, response.status, { error: `Failed to fetch metadata: ${response.status}` });
-      return;
+      return NextResponse.json(
+        { error: `Failed to fetch metadata: ${response.status}` },
+        { status: response.status }
+      );
     }
 
     const data = await response.json();
@@ -48,17 +35,16 @@ export default async function handler(req, res) {
     const summaryProfile = summary?.summaryProfile;
 
     if (!assetProfile && !fundProfile && !summaryProfile) {
-      sendJSON(res, 200, {
+      return NextResponse.json({
         symbol: upperSymbol,
         sector: null,
         industry: null,
         country: null,
         category: null,
       });
-      return;
     }
 
-    sendJSON(res, 200, {
+    return NextResponse.json({
       symbol: upperSymbol,
       sector: assetProfile?.sector ?? summaryProfile?.sector ?? null,
       industry: assetProfile?.industry ?? summaryProfile?.industry ?? null,
@@ -67,7 +53,7 @@ export default async function handler(req, res) {
     });
   } catch (error) {
     console.error(`Error fetching metadata for ${upperSymbol}:`, error);
-    sendJSON(res, 500, { error: 'Failed to fetch stock metadata' });
+    return NextResponse.json({ error: 'Failed to fetch stock metadata' }, { status: 500 });
   }
-};
+}
 

@@ -194,6 +194,8 @@ interface ApiCryptoPriceResponse {
   change24h?: number;
   changePercent?: number;
   source?: string;
+  name?: string;
+  exchange?: string;
 }
 
 const mapApiHistoryPoints = (items: ApiHistoryPoint[]): PricePoint[] => {
@@ -746,7 +748,7 @@ export const fetchHistoricalPrices = async (symbol: string, range: TimeRange): P
           volume: typeof volumes[idx] === 'number' ? Number(volumes[idx]) : null,
         };
       })
-      .filter((point): point is PricePoint => Boolean(point));
+      .filter((point): point is NonNullable<typeof point> => Boolean(point)) as PricePoint[];
 
     if (!points.length) {
       throw new Error('Yahoo Finance returned no usable price points.');
