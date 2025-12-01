@@ -27,7 +27,7 @@ import {
   Legend,
   ComposedChart
 } from 'recharts';
-import { StockHolding, PortfolioOwner, TimeRange, AssetType, NewsItem, CashHolding } from '../types';
+import { StockHolding, PortfolioOwner, TimeRange, AssetType, NewsItem, CashHolding, RealEstateProperty } from '../types';
 import { fetchStockQuote, fetchHistoricalPrices, fetchMarketNews, loadHoldingHistory, PricePoint } from '../services/yahooFinanceService';
 import { StorageService } from '../services/storageService';
 import { Card, Button, Input, Select, Badge, Money } from './UIComponents';
@@ -56,6 +56,7 @@ export const Portfolio: React.FC<PortfolioProps> = ({ privacy }) => {
   
   const [holdings, setHoldings] = useState<StockHolding[]>([]);
   const [cashHoldings, setCashHoldings] = useState<CashHolding[]>([]);
+  const [realEstateHoldings, setRealEstateHoldings] = useState<RealEstateProperty[]>([]);
   const [timeRange, setTimeRange] = useState<TimeRange>(TimeRange.MONTH);
   const [activeTab, setActiveTab] = useState<'Total' | 'Me' | 'Carolina'>('Total');
   const [showBenchmark, setShowBenchmark] = useState(false);
@@ -82,6 +83,8 @@ export const Portfolio: React.FC<PortfolioProps> = ({ privacy }) => {
         setHoldings(data);
         const cash = await StorageService.getCash();
         setCashHoldings(cash);
+        const realEstate = await StorageService.getRealEstate();
+        setRealEstateHoldings(realEstate);
         const newsData = await fetchMarketNews();
         setNews(newsData);
      };
@@ -393,22 +396,33 @@ export const Portfolio: React.FC<PortfolioProps> = ({ privacy }) => {
       cashValue += c.amount;
     });
 
-    // Total Net Worth = Portfolio + Cash
-    const netWorth = portfolioValue + cashValue;
+    // Real Estate equity (value - debt)
+    let realEstateEquity = 0;
+    const filteredRealEstate = activeTab === 'Total'
+      ? realEstateHoldings
+      : realEstateHoldings.filter(r => r.owner === (activeTab === 'Me' ? PortfolioOwner.ME : PortfolioOwner.CAROLINA));
+    
+    filteredRealEstate.forEach(r => {
+      realEstateEquity += (r.currentValue - r.loanAmount);
+    });
 
-    // Portfolio performance (investments only, cash doesn't affect this)
+    // Total Net Worth = Portfolio + Cash + Real Estate Equity
+    const netWorth = portfolioValue + cashValue + realEstateEquity;
+
+    // Portfolio performance (investments only, cash and real estate don't affect this)
     const totalReturn = portfolioValue - portfolioCost;
     const totalReturnPercent = portfolioCost > 0 ? (totalReturn / portfolioCost) * 100 : 0;
 
     return { 
-      netWorth,           // Total including cash
+      netWorth,           // Total including cash + real estate
       portfolioValue,     // Investments only
       cashValue,          // Cash only
+      realEstateEquity,   // Real estate equity (value - loans)
       totalReturn,        // Investment gains/losses
       totalReturnPercent, // Investment performance %
       dayChangeVal        // Today's change
     };
-  }, [filteredHoldings, cashHoldings, activeTab, latestPricesFromHistory]);
+  }, [filteredHoldings, cashHoldings, realEstateHoldings, activeTab, latestPricesFromHistory]);
 
   const lastUpdatedLabel = holdingLastUpdated ? new Date(holdingLastUpdated).toLocaleString() : null;
   const latestHoldingPrice = useMemo(() => {
@@ -527,7 +541,9 @@ export const Portfolio: React.FC<PortfolioProps> = ({ privacy }) => {
                   <Money value={metrics.netWorth} privacy={privacy} />
                 </h2>
                 <div className="text-xs text-slate-400 mt-2">
-                  Portfolio: <Money value={metrics.portfolioValue} privacy={privacy} fractionDigits={0} /> + Cash: <Money value={metrics.cashValue} privacy={privacy} fractionDigits={0} />
+                  Portfolio: <Money value={metrics.portfolioValue} privacy={privacy} fractionDigits={0} /> 
+                  {metrics.realEstateEquity > 0 && <> + Immobilien: <Money value={metrics.realEstateEquity} privacy={privacy} fractionDigits={0} /></>}
+                  {metrics.cashValue > 0 && <> + Cash: <Money value={metrics.cashValue} privacy={privacy} fractionDigits={0} /></>}
                 </div>
               </div>
               <div className="absolute -right-6 -bottom-6 text-indigo-500/10 z-0">
