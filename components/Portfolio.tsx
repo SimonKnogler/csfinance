@@ -356,6 +356,18 @@ export const Portfolio: React.FC<PortfolioProps> = ({ privacy }) => {
     }));
   }, [historyData, holdings]);
 
+  // Get latest prices from history data for all holdings (moved up for use in metrics)
+  const latestPricesFromHistory = useMemo(() => {
+    if (historyData.length === 0) return {};
+    const lastPoint = historyData[historyData.length - 1];
+    return lastPoint.prices || {};
+  }, [historyData]);
+
+  // Helper to get the current price for a holding (prefer history data)
+  const getLatestPrice = (holding: StockHolding) => {
+    return latestPricesFromHistory[holding.symbol] ?? holding.currentPrice;
+  };
+
   const metrics = useMemo(() => {
     // Portfolio value (investments only - for performance tracking)
     let portfolioValue = 0;
@@ -363,7 +375,8 @@ export const Portfolio: React.FC<PortfolioProps> = ({ privacy }) => {
     let dayChangeVal = 0;
 
     filteredHoldings.forEach(h => {
-      const val = h.shares * h.currentPrice;
+      const latestPrice = latestPricesFromHistory[h.symbol] ?? h.currentPrice;
+      const val = h.shares * latestPrice;
       const cost = h.shares * h.avgCost;
       portfolioValue += val;
       portfolioCost += cost;
@@ -395,7 +408,7 @@ export const Portfolio: React.FC<PortfolioProps> = ({ privacy }) => {
       totalReturnPercent, // Investment performance %
       dayChangeVal        // Today's change
     };
-  }, [filteredHoldings, cashHoldings, activeTab]);
+  }, [filteredHoldings, cashHoldings, activeTab, latestPricesFromHistory]);
 
   const lastUpdatedLabel = holdingLastUpdated ? new Date(holdingLastUpdated).toLocaleString() : null;
   const latestHoldingPrice = useMemo(() => {
@@ -635,7 +648,8 @@ export const Portfolio: React.FC<PortfolioProps> = ({ privacy }) => {
                 </thead>
                 <tbody className="divide-y divide-slate-800">
                   {filteredHoldings.map(h => {
-                    const marketValue = h.shares * h.currentPrice;
+                    const latestPrice = getLatestPrice(h);
+                    const marketValue = h.shares * latestPrice;
                     const totalReturn = marketValue - (h.shares * h.avgCost);
                     const returnPercent = h.shares * h.avgCost > 0 ? (totalReturn / (h.shares * h.avgCost)) * 100 : 0;
                     return (
@@ -659,7 +673,7 @@ export const Portfolio: React.FC<PortfolioProps> = ({ privacy }) => {
                           </div>
                         </td>
                         <td className="p-4 text-right">
-                          <div className="font-medium text-white"><Money value={h.currentPrice} privacy={privacy} /></div>
+                          <div className="font-medium text-white"><Money value={latestPrice} privacy={privacy} /></div>
                           <div className={`text-xs ${h.dayChangePercent >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
                             {h.dayChangePercent >= 0 ? '+' : ''}{h.dayChangePercent.toFixed(2)}%
                           </div>
