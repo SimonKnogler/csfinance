@@ -129,7 +129,8 @@ export const Portfolio: React.FC<PortfolioProps> = ({ privacy }) => {
         const historyMap = new Map(allHistory.map(h => [h.symbol, h.data]));
         
         // Portfolio start date - only show data from when all positions were bought
-        const PORTFOLIO_START_DATE = new Date('2025-10-20').getTime();
+        // Note: API timestamps are in SECONDS, so divide by 1000
+        const PORTFOLIO_START_DATE = new Date('2025-10-20').getTime() / 1000;
         
         // Get MSCI data, filtered to portfolio start date
         const allMsciData = historyMap.get('URTH') || [];
