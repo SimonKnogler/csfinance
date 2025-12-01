@@ -17,7 +17,7 @@ const RANGE_CONFIG = {
 const toBaseSymbol = (symbol) => symbol.toUpperCase().replace('-USD', '');
 const toBinancePair = (symbol) => `${toBaseSymbol(symbol)}USDT`;
 
-export default async function handler(req, res) {
+module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Credentials', 'true');
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');

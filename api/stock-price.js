@@ -6,7 +6,7 @@ const sendJSON = (res, statusCode, payload) => {
   res.end(JSON.stringify(payload));
 };
 
-export default async function handler(req, res) {
+module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Credentials', 'true');
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
