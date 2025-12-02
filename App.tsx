@@ -23,7 +23,7 @@ import {
   X
 } from 'lucide-react';
 import { PortfolioDocument, RecurringEntry } from './types';
-import { CategoryPieChart, MonthlyBarChart } from './components/Charts';
+import { BudgetPieChart } from './components/Charts';
 import { Card, Button, Input, Select, Badge, Money } from './components/UIComponents';
 import { Portfolio } from './components/Portfolio';
 import { RealEstate } from './components/RealEstate';
@@ -360,6 +360,11 @@ const AuthenticatedApp: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
                 </Card>
                </div>
 
+               {/* Income Pie Chart */}
+               <Card title="Einnahmen nach Kategorie">
+                 <BudgetPieChart entries={recurringEntries} type="INCOME" privacy={isPrivacyMode} />
+               </Card>
+
                {/* Recurring Income Entries */}
                <Card>
                  <div className="flex items-center justify-between mb-4">
@@ -419,6 +424,11 @@ const AuthenticatedApp: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
                   <p className="text-xs text-slate-500 mt-1">vom Einkommen</p>
                 </Card>
                </div>
+
+               {/* Expense Pie Chart */}
+               <Card title="Ausgaben nach Kategorie">
+                 <BudgetPieChart entries={recurringEntries} type="EXPENSE" privacy={isPrivacyMode} />
+               </Card>
 
                {/* Recurring Expense Entries */}
                <Card>

@@ -4,7 +4,7 @@ import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, Legend, BarChart, Bar
 } from 'recharts';
-import { Transaction, TransactionType } from '../types';
+import { Transaction, TransactionType, RecurringEntry } from '../types';
 
 interface ChartsProps {
   transactions: Transaction[];
@@ -143,6 +143,96 @@ export const CategoryPieChart: React.FC<ChartsProps & { type?: TransactionType }
           <Legend verticalAlign="bottom" height={36} iconType="circle" />
         </PieChart>
       </ResponsiveContainer>
+    </div>
+  );
+};
+
+// Colors for budget charts
+const INCOME_COLORS = ['#10b981', '#34d399', '#6ee7b7', '#a7f3d0', '#d1fae5'];
+const EXPENSE_COLORS = ['#ef4444', '#f87171', '#fca5a5', '#fecaca', '#fee2e2', '#f59e0b', '#fbbf24'];
+
+interface BudgetPieChartProps {
+  entries: RecurringEntry[];
+  type: 'INCOME' | 'EXPENSE';
+  privacy?: boolean;
+}
+
+export const BudgetPieChart: React.FC<BudgetPieChartProps> = ({ entries, type, privacy = false }) => {
+  // Filter active entries and group by category
+  const categoryMap = new Map<string, number>();
+
+  entries
+    .filter(e => e.isActive && e.type === type)
+    .forEach(e => {
+      // Convert to monthly amount for consistency
+      let monthlyAmount = e.amount;
+      if (e.frequency === 'YEARLY') monthlyAmount = e.amount / 12;
+      if (e.frequency === 'WEEKLY') monthlyAmount = e.amount * 4.33;
+      
+      const current = categoryMap.get(e.category) || 0;
+      categoryMap.set(e.category, current + monthlyAmount);
+    });
+
+  const data = Array.from(categoryMap.entries())
+    .map(([name, value]) => ({ name, value: Math.round(value) }))
+    .sort((a, b) => b.value - a.value);
+
+  const colors = type === 'INCOME' ? INCOME_COLORS : EXPENSE_COLORS;
+  const total = data.reduce((sum, d) => sum + d.value, 0);
+
+  if (data.length === 0) {
+    return (
+      <div className="h-[280px] w-full flex items-center justify-center text-slate-500">
+        Keine Einträge vorhanden
+      </div>
+    );
+  }
+
+  return (
+    <div className="h-[280px] w-full">
+      <ResponsiveContainer width="100%" height="100%">
+        <PieChart>
+          <Pie
+            data={data}
+            cx="50%"
+            cy="45%"
+            innerRadius={50}
+            outerRadius={75}
+            paddingAngle={3}
+            dataKey="value"
+            label={({ name, percent }) => privacy ? name : `${name} (${(percent * 100).toFixed(0)}%)`}
+            labelLine={{ stroke: '#64748b', strokeWidth: 1 }}
+          >
+            {data.map((entry, index) => (
+              <Cell 
+                key={`cell-${index}`} 
+                fill={colors[index % colors.length]} 
+                stroke="none" 
+              />
+            ))}
+          </Pie>
+          <Tooltip 
+            contentStyle={{ 
+              backgroundColor: '#1e293b', 
+              border: '1px solid #334155', 
+              borderRadius: '8px',
+              padding: '8px 12px'
+            }}
+            itemStyle={{ color: '#f8fafc' }}
+            formatter={(val: number) => [
+              privacy ? '****' : `€${val.toLocaleString()} / Monat`,
+              'Betrag'
+            ]}
+          />
+        </PieChart>
+      </ResponsiveContainer>
+      {/* Total display */}
+      <div className="text-center -mt-2">
+        <p className="text-slate-400 text-xs">Gesamt monatlich</p>
+        <p className={`text-lg font-bold ${type === 'INCOME' ? 'text-emerald-400' : 'text-red-400'}`}>
+          {privacy ? '****' : `€${total.toLocaleString()}`}
+        </p>
+      </div>
     </div>
   );
 };
