@@ -156,5 +156,34 @@ export const CloudService = {
       console.error(`Cloud Fetch Error (${collectionName}):`, e);
       return [];
     }
+  },
+
+  // Validate user credentials directly against Firebase
+  validateUser: async (username: string, password: string): Promise<{ valid: boolean; user: any | null }> => {
+    const db = CloudService.getDb();
+    if (!db) {
+      console.error('No Firebase connection available');
+      return { valid: false, user: null };
+    }
+    
+    try {
+      const snapshot = await getDocs(collection(db, 'users'));
+      const users = snapshot.docs.map(doc => doc.data());
+      
+      // Find user by username (document ID or username field)
+      const user = users.find(u => 
+        u.username === username || 
+        u.username?.toLowerCase() === username.toLowerCase()
+      );
+      
+      if (user && user.password === password) {
+        return { valid: true, user };
+      }
+      
+      return { valid: false, user: null };
+    } catch (e) {
+      console.error('Cloud Auth Error:', e);
+      return { valid: false, user: null };
+    }
   }
 };

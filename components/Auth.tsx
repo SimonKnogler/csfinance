@@ -1,19 +1,17 @@
 
 import React, { useState } from 'react';
-import { Wallet, ArrowRight, User as UserIcon, Lock, Loader2 } from 'lucide-react';
+import { Wallet, ArrowRight, User as UserIcon, Lock, Loader2, ShieldAlert } from 'lucide-react';
 import { StorageService } from '../services/storageService';
+import { CloudService } from '../services/cloudService';
 import { Button, Input, Card } from './UIComponents';
-import { User } from '../types';
 
 interface AuthProps {
   onLogin: () => void;
 }
 
 export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
-  const [isLogin, setIsLogin] = useState(true);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [name, setName] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -23,44 +21,20 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
     setLoading(true);
 
     try {
-      if (isLogin) {
-        const storedUser = await StorageService.getUser(username);
-        
-        if (storedUser && storedUser.password === password) {
-          await StorageService.login(username);
-          onLogin();
-        } else {
-          // Backdoor for demo if specific user
-          if (username === 'admin' && password === 'password') {
-             const adminUser: User = { username: 'admin', password: 'password', name: 'Administrator' };
-             await StorageService.saveUser(adminUser);
-             await StorageService.login(username);
-             onLogin();
-             return;
-          }
-          setError('Invalid credentials. Please try again.');
-        }
-      } else {
-        if (!username || !password || !name) {
-          setError('All fields are required');
-          setLoading(false);
-          return;
-        }
-        
-        const existing = await StorageService.getUser(username);
-        if (existing) {
-          setError('Username already exists');
-          setLoading(false);
-          return;
-        }
-
-        const newUser: User = { username, password, name };
-        await StorageService.saveUser(newUser);
+      // Validate credentials against Firebase only
+      const result = await CloudService.validateUser(username, password);
+      
+      if (result.valid && result.user) {
+        // Save user locally for session
+        await StorageService.saveUser(result.user);
         await StorageService.login(username);
         onLogin();
+      } else {
+        setError('Invalid credentials. Access denied.');
       }
     } catch (err) {
-      setError('An error occurred. Please try again.');
+      console.error('Auth error:', err);
+      setError('Authentication failed. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -80,22 +54,10 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
             <Wallet className="text-white w-8 h-8" />
           </div>
           <h1 className="text-2xl font-bold text-white tracking-tight">FinanceCS</h1>
-          <p className="text-slate-400">Your wealth, intelligently managed.</p>
+          <p className="text-slate-400">Private wealth management</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          {!isLogin && (
-             <div className="relative">
-              <UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500 z-10" />
-              <Input 
-                placeholder="Full Name" 
-                className="pl-10" 
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-              />
-            </div>
-          )}
-          
           <div className="relative">
             <UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500 z-10" />
             <Input 
@@ -103,6 +65,7 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
               className="pl-10" 
               value={username}
               onChange={(e) => setUsername(e.target.value)}
+              autoComplete="username"
             />
           </div>
 
@@ -114,26 +77,26 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
               className="pl-10" 
               value={password}
               onChange={(e) => setPassword(e.target.value)}
+              autoComplete="current-password"
             />
           </div>
 
-          {error && <p className="text-red-400 text-sm text-center">{error}</p>}
+          {error && (
+            <div className="flex items-center gap-2 text-red-400 text-sm bg-red-500/10 px-3 py-2 rounded-lg">
+              <ShieldAlert size={16} />
+              {error}
+            </div>
+          )}
 
-          <Button type="submit" className="w-full py-3 mt-2" disabled={loading}>
-            {loading ? <Loader2 className="animate-spin" /> : (isLogin ? 'Sign In' : 'Create Account')} 
+          <Button type="submit" className="w-full py-3 mt-2" disabled={loading || !username || !password}>
+            {loading ? <Loader2 className="animate-spin" /> : 'Sign In'} 
             {!loading && <ArrowRight size={18} />}
           </Button>
         </form>
 
         <div className="mt-6 text-center">
-          <p className="text-slate-400 text-sm">
-            {isLogin ? "Don't have an account?" : "Already have an account?"}
-            <button 
-              onClick={() => { setIsLogin(!isLogin); setError(''); }} 
-              className="ml-2 text-primary hover:text-indigo-400 font-medium transition-colors"
-            >
-              {isLogin ? 'Sign Up' : 'Log In'}
-            </button>
+          <p className="text-slate-500 text-xs">
+            Access restricted to authorized users only.
           </p>
         </div>
       </Card>
