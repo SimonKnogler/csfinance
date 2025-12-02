@@ -34,6 +34,8 @@ import {
   Legend,
   PieChart,
   Pie,
+  ComposedChart,
+  Line,
   Cell
 } from 'recharts';
 import { RealEstateProperty, PortfolioOwner } from '../types';
@@ -1390,10 +1392,10 @@ const PropertySimulator: React.FC<{
 
       {/* Projection Chart */}
       <Card>
-        <h3 className="text-lg font-bold text-white mb-4">Vermögensvergleich: Aktuell vs. Simulation (20 Jahre)</h3>
-        <div className="h-80">
+        <h3 className="text-lg font-bold text-white mb-4">Eigenkapital & Restschuld: Aktuell vs. Simulation (20 Jahre)</h3>
+        <div className="h-96">
           <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={projectionData} margin={{ top: 20, right: 20, left: 20, bottom: 20 }}>
+            <ComposedChart data={projectionData} margin={{ top: 20, right: 20, left: 20, bottom: 20 }}>
               <defs>
                 <linearGradient id="colorCurrentEquity" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3}/>
@@ -1413,10 +1415,64 @@ const PropertySimulator: React.FC<{
                 labelFormatter={(label) => `Jahr ${label}`}
               />
               <Legend />
+              {/* Eigenkapital als Flächen */}
               <Area type="monotone" name="Aktuell (Eigenkapital)" dataKey="currentEquity" stroke="#6366f1" fill="url(#colorCurrentEquity)" strokeWidth={2} strokeDasharray="5 5" />
               <Area type="monotone" name="Simulation (Eigenkapital)" dataKey="simEquity" stroke="#f59e0b" fill="url(#colorSimEquity)" strokeWidth={3} />
-            </AreaChart>
+              {/* Restschuld als Linien */}
+              <Line type="monotone" name="Aktuell (Restschuld)" dataKey="currentDebt" stroke="#ef4444" strokeWidth={2} strokeDasharray="5 5" dot={false} />
+              <Line type="monotone" name="Simulation (Restschuld)" dataKey="simDebt" stroke="#f97316" strokeWidth={3} dot={false} />
+            </ComposedChart>
           </ResponsiveContainer>
+        </div>
+        <div className="flex gap-6 mt-4 text-xs text-slate-400 justify-center">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-0.5 bg-gradient-to-r from-indigo-500 to-amber-500"></div>
+            <span>Eigenkapital steigt</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-0.5 bg-gradient-to-r from-red-500 to-orange-500"></div>
+            <span>Restschuld sinkt</span>
+          </div>
+        </div>
+      </Card>
+
+      {/* Tilgungsplan Tabelle */}
+      <Card>
+        <h3 className="text-lg font-bold text-white mb-4">Tilgungsplan (Jahresübersicht)</h3>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-slate-400 border-b border-slate-700">
+                <th className="text-left py-2 px-2">Jahr</th>
+                <th className="text-right py-2 px-2">Restschuld (Aktuell)</th>
+                <th className="text-right py-2 px-2">Restschuld (Sim)</th>
+                <th className="text-right py-2 px-2">Ersparnis</th>
+                <th className="text-right py-2 px-2">Eigenkapital (Sim)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {projectionData.filter((_, i) => i % 2 === 0 || i === projectionData.length - 1).map((row, idx) => {
+                const savings = row.currentDebt - row.simDebt;
+                return (
+                  <tr key={row.year} className={`border-b border-slate-800 ${idx % 2 === 0 ? 'bg-slate-800/20' : ''}`}>
+                    <td className="py-2 px-2 text-white font-medium">{row.year}</td>
+                    <td className="py-2 px-2 text-right text-red-400">
+                      {privacy ? '****' : `€${row.currentDebt.toLocaleString()}`}
+                    </td>
+                    <td className="py-2 px-2 text-right text-orange-400">
+                      {privacy ? '****' : `€${row.simDebt.toLocaleString()}`}
+                    </td>
+                    <td className={`py-2 px-2 text-right ${savings > 0 ? 'text-emerald-400' : 'text-slate-400'}`}>
+                      {privacy ? '****' : savings > 0 ? `+€${savings.toLocaleString()}` : '€0'}
+                    </td>
+                    <td className="py-2 px-2 text-right text-amber-400">
+                      {privacy ? '****' : `€${row.simEquity.toLocaleString()}`}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       </Card>
     </div>
