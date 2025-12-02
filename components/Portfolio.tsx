@@ -105,6 +105,37 @@ export const Portfolio: React.FC<PortfolioProps> = ({ privacy }) => {
 
   // --- DATA COMPUTATION ---
 
+  // Helper: Get the start timestamp for each time range (in seconds, matching API)
+  const getRangeStartTimestamp = (range: TimeRange): number => {
+    const now = new Date();
+    const PORTFOLIO_INCEPTION = new Date('2025-10-20'); // When portfolio was created
+    
+    switch (range) {
+      case TimeRange.DAY:
+        // Start from beginning of today (midnight)
+        now.setHours(0, 0, 0, 0);
+        return Math.floor(now.getTime() / 1000);
+      case TimeRange.WEEK:
+        now.setDate(now.getDate() - 7);
+        return Math.floor(now.getTime() / 1000);
+      case TimeRange.MONTH:
+        now.setMonth(now.getMonth() - 1);
+        return Math.floor(now.getTime() / 1000);
+      case TimeRange.SIX_MONTHS:
+        // Use portfolio inception if it's more recent than 6 months ago
+        const sixMonthsAgo = new Date();
+        sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+        const effectiveStart = sixMonthsAgo > PORTFOLIO_INCEPTION ? sixMonthsAgo : PORTFOLIO_INCEPTION;
+        return Math.floor(effectiveStart.getTime() / 1000);
+      case TimeRange.YEAR:
+      case TimeRange.ALL:
+        // Always use portfolio inception date for long ranges
+        return Math.floor(PORTFOLIO_INCEPTION.getTime() / 1000);
+      default:
+        return Math.floor(now.getTime() / 1000);
+    }
+  };
+
   useEffect(() => {
     let cancelled = false;
     const loadPortfolioHistory = async () => {
@@ -128,27 +159,22 @@ export const Portfolio: React.FC<PortfolioProps> = ({ privacy }) => {
         const allHistory = await Promise.all(historyPromises);
         const historyMap = new Map(allHistory.map(h => [h.symbol, h.data]));
         
-        // Portfolio start date - only apply for longer time ranges (6M, 1Y, ALL)
-        // For short ranges (1D, 1W, 1M), show all available data from the API
-        // Note: API timestamps are in SECONDS, so divide by 1000
-        const PORTFOLIO_START_DATE = new Date('2025-10-20').getTime() / 1000;
-        const shouldFilterByStartDate = [TimeRange.SIX_MONTHS, TimeRange.YEAR, TimeRange.ALL].includes(timeRange);
+        // Get the correct start timestamp based on the selected range
+        const rangeStartTimestamp = getRangeStartTimestamp(timeRange);
         
-        // Get MSCI data, optionally filtered to portfolio start date
+        // Get MSCI data, filtered to range start
         const allMsciData = historyMap.get('URTH') || [];
-        const msciData = shouldFilterByStartDate 
-          ? allMsciData.filter(p => p.timestamp >= PORTFOLIO_START_DATE)
-          : allMsciData;
+        const msciData = allMsciData.filter(p => p.timestamp >= rangeStartTimestamp);
         const msciBaseline = msciData.length > 0 ? msciData[0].price : 100;
         
-        // Build timestamp map from all holdings
+        // Build timestamp map from all holdings - only include data from range start
         const timestampMap = new Map<number, { date: string; pricesBySymbol: Map<string, number> }>();
         
         holdings.forEach(holding => {
           const data = historyMap.get(holding.symbol) || [];
           data.forEach(point => {
-            // For short ranges, include all data; for long ranges, filter by start date
-            if (!shouldFilterByStartDate || point.timestamp >= PORTFOLIO_START_DATE) {
+            // Only include data points from the range start onwards
+            if (point.timestamp >= rangeStartTimestamp) {
               if (!timestampMap.has(point.timestamp)) {
                 timestampMap.set(point.timestamp, {
                   date: point.date,
