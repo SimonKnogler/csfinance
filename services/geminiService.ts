@@ -129,9 +129,10 @@ export const chatWithAI = async (
     const text = response.text();
 
     return text || "Entschuldigung, ich konnte keine Antwort generieren.";
-  } catch (error) {
+  } catch (error: any) {
     console.error("Gemini Chat Error:", error);
-    return "❌ Fehler bei der Verbindung zum AI-Service. Bitte versuche es später erneut.";
+    const errorMessage = error?.message || error?.toString() || 'Unbekannter Fehler';
+    return `❌ Gemini Fehler: ${errorMessage}`;
   }
 };
 
