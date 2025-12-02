@@ -9,7 +9,6 @@ import {
   Trash2, 
   X,
   TrendingUp,
-  Newspaper,
   Bitcoin,
   Zap,
   LayoutGrid,
@@ -27,8 +26,8 @@ import {
   Legend,
   ComposedChart
 } from 'recharts';
-import { StockHolding, PortfolioOwner, TimeRange, AssetType, NewsItem, CashHolding, RealEstateProperty } from '../types';
-import { fetchStockQuote, fetchHistoricalPrices, fetchMarketNews, loadHoldingHistory, PricePoint } from '../services/yahooFinanceService';
+import { StockHolding, PortfolioOwner, TimeRange, AssetType, CashHolding, RealEstateProperty } from '../types';
+import { fetchStockQuote, fetchHistoricalPrices, loadHoldingHistory, PricePoint } from '../services/yahooFinanceService';
 import { StorageService } from '../services/storageService';
 import { Card, Button, Input, Select, Badge, Money } from './UIComponents';
 
@@ -67,7 +66,6 @@ export const Portfolio: React.FC<PortfolioProps> = ({ privacy }) => {
   const [isAddCashModalOpen, setIsAddCashModalOpen] = useState(false);
   
   const [historyData, setHistoryData] = useState<PortfolioHistoryPoint[]>([]);
-  const [news, setNews] = useState<NewsItem[]>([]);
   const [selectedHolding, setSelectedHolding] = useState<StockHolding | null>(null);
   const [holdingTimeRange, setHoldingTimeRange] = useState<TimeRange>(TimeRange.MONTH);
   const [holdingHistory, setHoldingHistory] = useState<PricePoint[]>([]);
@@ -88,16 +86,6 @@ export const Portfolio: React.FC<PortfolioProps> = ({ privacy }) => {
      };
      load();
   }, []);
-
-  // Fetch news based on holdings (separate effect to use holding symbols)
-  useEffect(() => {
-    const loadNews = async () => {
-      const symbols = holdings.map(h => h.symbol);
-      const newsData = await fetchMarketNews(symbols);
-      setNews(newsData);
-    };
-    loadNews();
-  }, [holdings]);
 
   // --- PERSISTENCE ---
   // Wrapper to save state
@@ -453,33 +441,22 @@ export const Portfolio: React.FC<PortfolioProps> = ({ privacy }) => {
       cashValue += c.amount;
     });
 
-    // Real Estate equity (value - debt)
-    let realEstateEquity = 0;
-    const filteredRealEstate = activeTab === 'Total'
-      ? realEstateHoldings
-      : realEstateHoldings.filter(r => r.owner === (activeTab === 'Me' ? PortfolioOwner.ME : PortfolioOwner.CAROLINA));
-    
-    filteredRealEstate.forEach(r => {
-      realEstateEquity += (r.currentValue - r.loanAmount);
-    });
+    // Portfolio total = investments + cash (real estate shown separately in Net Worth dashboard)
+    const netWorth = portfolioValue + cashValue;
 
-    // Total Net Worth = Portfolio + Cash + Real Estate Equity
-    const netWorth = portfolioValue + cashValue + realEstateEquity;
-
-    // Portfolio performance (investments only, cash and real estate don't affect this)
+    // Portfolio performance (investments only, cash doesn't affect this)
     const totalReturn = portfolioValue - portfolioCost;
     const totalReturnPercent = portfolioCost > 0 ? (totalReturn / portfolioCost) * 100 : 0;
 
     return { 
-      netWorth,           // Total including cash + real estate
+      netWorth,           // Portfolio + Cash only
       portfolioValue,     // Investments only
       cashValue,          // Cash only
-      realEstateEquity,   // Real estate equity (value - loans)
       totalReturn,        // Investment gains/losses
       totalReturnPercent, // Investment performance %
       dayChangeVal        // Today's change
     };
-  }, [filteredHoldings, cashHoldings, realEstateHoldings, activeTab, latestPricesFromHistory]);
+  }, [filteredHoldings, cashHoldings, activeTab, latestPricesFromHistory]);
 
   const lastUpdatedLabel = holdingLastUpdated ? new Date(holdingLastUpdated).toLocaleString() : null;
   const latestHoldingPrice = useMemo(() => {
@@ -599,7 +576,6 @@ export const Portfolio: React.FC<PortfolioProps> = ({ privacy }) => {
                 </h2>
                 <div className="text-xs text-slate-400 mt-2">
                   Portfolio: <Money value={metrics.portfolioValue} privacy={privacy} fractionDigits={0} /> 
-                  {metrics.realEstateEquity > 0 && <> + Immobilien: <Money value={metrics.realEstateEquity} privacy={privacy} fractionDigits={0} /></>}
                   {metrics.cashValue > 0 && <> + Cash: <Money value={metrics.cashValue} privacy={privacy} fractionDigits={0} /></>}
                 </div>
               </div>
@@ -943,39 +919,6 @@ export const Portfolio: React.FC<PortfolioProps> = ({ privacy }) => {
             )}
           </Card>
 
-          {/* NEWS SECTION */}
-          <div className="space-y-4">
-            <div className="flex items-center gap-2 text-slate-400 uppercase text-xs font-bold tracking-wider">
-              <Newspaper size={14} />
-              <span>Relevant News for your Assets</span>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-               {news.map(item => (
-                 <a key={item.id} href={item.url} target="_blank" rel="noopener noreferrer" className="group block">
-                   <Card className="h-full p-0 overflow-hidden hover:border-primary/50 transition-colors">
-                      <div className="h-32 bg-slate-800 relative overflow-hidden">
-                        <img src={item.imageUrl} alt={item.title} className="w-full h-full object-cover opacity-60 group-hover:scale-105 transition-transform duration-500" />
-                        <div className="absolute top-3 right-3">
-                           <Badge color={item.sentiment === 'POSITIVE' ? 'bg-emerald-500 text-white' : item.sentiment === 'NEGATIVE' ? 'bg-red-500 text-white' : 'bg-slate-500 text-white'}>
-                             {item.sentiment}
-                           </Badge>
-                        </div>
-                      </div>
-                      <div className="p-4">
-                        <div className="flex gap-2 mb-2">
-                          {item.relatedTickers.map(t => <span key={t} className="text-[10px] font-bold bg-slate-700 px-1.5 py-0.5 rounded text-slate-300">{t}</span>)}
-                        </div>
-                        <h4 className="font-semibold text-white mb-2 line-clamp-2 group-hover:text-primary transition-colors">{item.title}</h4>
-                        <div className="flex justify-between text-xs text-slate-500">
-                          <span>{item.source}</span>
-                          <span>{item.time}</span>
-                        </div>
-                      </div>
-                   </Card>
-                 </a>
-               ))}
-            </div>
-          </div>
         </>
       )}
 

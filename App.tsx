@@ -2,15 +2,12 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   LayoutDashboard, 
-  CreditCard, 
   PieChart as PieIcon, 
   Settings as SettingsIcon, 
   Plus, 
   Wallet, 
   ArrowUpRight, 
   ArrowDownRight, 
-  Search,
-  Wand2,
   Briefcase,
   TrendingUp,
   TrendingDown,
@@ -20,36 +17,32 @@ import {
   EyeOff,
   LogOut,
   Loader2,
-  Building2
+  Building2,
+  Edit2,
+  Trash2,
+  X
 } from 'lucide-react';
-import { Transaction, TransactionType, Category, PortfolioDocument } from './types';
-import { OverviewChart, CategoryPieChart, MonthlyBarChart } from './components/Charts';
+import { PortfolioDocument, RecurringEntry } from './types';
+import { CategoryPieChart, MonthlyBarChart } from './components/Charts';
 import { Card, Button, Input, Select, Badge, Money } from './components/UIComponents';
-import { AIInsights } from './components/AIInsights';
 import { Portfolio } from './components/Portfolio';
 import { RealEstate } from './components/RealEstate';
 import { RentalTaxCalculator } from './components/RentalTaxCalculator';
+import { NetWorthDashboard } from './components/NetWorthDashboard';
 import { Documents } from './components/Documents';
 import { Auth } from './components/Auth';
 import { Settings } from './components/Settings';
-import { autoCategorizeTransaction } from './services/geminiService';
 import { StorageService } from './services/storageService';
 
-// --- MOCK DATA FALLBACK ---
-const MOCK_TRANSACTIONS: Transaction[] = [
-  { id: '1', date: '2023-10-25', amount: 4500, type: TransactionType.INCOME, category: Category.INCOME, description: 'Monthly Salary' },
-  { id: '2', date: '2023-10-26', amount: 45.50, type: TransactionType.EXPENSE, category: Category.TRANSPORT, description: 'Uber Ride' },
-  { id: '3', date: '2023-10-27', amount: 120.00, type: TransactionType.EXPENSE, category: Category.FOOD, description: 'Dinner at Nobu' },
-  { id: '4', date: '2023-10-28', amount: 15.99, type: TransactionType.EXPENSE, category: Category.ENTERTAINMENT, description: 'Netflix Subscription' },
-  { id: '5', date: '2023-10-29', amount: 250.00, type: TransactionType.EXPENSE, category: Category.SHOPPING, description: 'Nike Sneakers' },
-  { id: '6', date: '2023-10-30', amount: 80.00, type: TransactionType.EXPENSE, category: Category.UTILITIES, description: 'Electric Bill' },
-  { id: '7', date: '2023-10-15', amount: 200.00, type: TransactionType.INCOME, category: Category.INCOME, description: 'Freelance Project' },
-  { id: '8', date: '2023-10-10', amount: 3000.00, type: TransactionType.EXPENSE, category: Category.HOUSING, description: 'Rent Payment' },
+// Budget categories for recurring entries
+const BUDGET_CATEGORIES = [
+  'Gehalt', 'Freelance', 'Dividenden', 'Mieteinnahmen', 'Sonstiges Einkommen',
+  'Miete', 'Strom/Gas', 'Internet', 'Versicherungen', 'Lebensmittel', 
+  'Transport', 'Abos', 'Freizeit', 'Kleidung', 'Gesundheit', 'Sonstiges'
 ];
 
 enum View {
-  DASHBOARD = 'dashboard',
-  TRANSACTIONS = 'transactions',
+  NET_WORTH = 'net-worth',
   PORTFOLIO = 'portfolio',
   REAL_ESTATE = 'real-estate',
   INCOME = 'income',
@@ -88,54 +81,97 @@ const App: React.FC = () => {
 };
 
 const AuthenticatedApp: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
-  const [activeView, setActiveView] = useState<View>(View.DASHBOARD);
+  const [activeView, setActiveView] = useState<View>(View.NET_WORTH);
   const [isDataLoading, setIsDataLoading] = useState(true);
   
   // Data State
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [documents, setDocuments] = useState<PortfolioDocument[]>([]);
+  const [recurringEntries, setRecurringEntries] = useState<RecurringEntry[]>([]);
   
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isAddEntryModalOpen, setIsAddEntryModalOpen] = useState(false);
+  const [editingEntry, setEditingEntry] = useState<RecurringEntry | null>(null);
+  const [entryType, setEntryType] = useState<'INCOME' | 'EXPENSE'>('INCOME');
   const [isPrivacyMode, setIsPrivacyMode] = useState(false);
 
   // Initial Data Load
   useEffect(() => {
     const loadData = async () => {
       setIsDataLoading(true);
-      const [txs, docs] = await Promise.all([
-        StorageService.getTransactions(),
-        StorageService.getDocuments()
+      const [docs, entries] = await Promise.all([
+        StorageService.getDocuments(),
+        StorageService.getRecurringEntries()
       ]);
       
-      setTransactions(txs.length > 0 ? txs : MOCK_TRANSACTIONS);
       setDocuments(docs);
+      setRecurringEntries(entries);
       setIsDataLoading(false);
     };
     loadData();
   }, []);
 
-  // Save handlers (Async)
-  const handleSaveTransactions = async (newTransactions: Transaction[]) => {
-    setTransactions(newTransactions);
-    await StorageService.saveTransactions(newTransactions);
-  };
-
+  // Save handlers
   const handleSaveDocuments = async (newDocs: PortfolioDocument[]) => {
     setDocuments(newDocs);
     await StorageService.saveDocuments(newDocs);
   };
 
+  const handleSaveRecurringEntries = async (entries: RecurringEntry[]) => {
+    setRecurringEntries(entries);
+    await StorageService.saveRecurringEntries(entries);
+  };
+
   // --- COMPUTED STATES ---
-  const totalBalance = useMemo(() => transactions.reduce((acc, t) => t.type === TransactionType.INCOME ? acc + t.amount : acc - t.amount, 0), [transactions]);
-  const totalIncome = useMemo(() => transactions.filter(t => t.type === TransactionType.INCOME).reduce((acc, t) => acc + t.amount, 0), [transactions]);
-  const totalExpense = useMemo(() => transactions.filter(t => t.type === TransactionType.EXPENSE).reduce((acc, t) => acc + t.amount, 0), [transactions]);
+  const incomeEntries = useMemo(() => recurringEntries.filter(e => e.type === 'INCOME' && e.isActive), [recurringEntries]);
+  const expenseEntries = useMemo(() => recurringEntries.filter(e => e.type === 'EXPENSE' && e.isActive), [recurringEntries]);
+  
+  const totalMonthlyIncome = useMemo(() => {
+    return incomeEntries.reduce((acc, e) => {
+      if (e.frequency === 'MONTHLY') return acc + e.amount;
+      if (e.frequency === 'YEARLY') return acc + (e.amount / 12);
+      if (e.frequency === 'WEEKLY') return acc + (e.amount * 4.33);
+      return acc;
+    }, 0);
+  }, [incomeEntries]);
+  
+  const totalMonthlyExpense = useMemo(() => {
+    return expenseEntries.reduce((acc, e) => {
+      if (e.frequency === 'MONTHLY') return acc + e.amount;
+      if (e.frequency === 'YEARLY') return acc + (e.amount / 12);
+      if (e.frequency === 'WEEKLY') return acc + (e.amount * 4.33);
+      return acc;
+    }, 0);
+  }, [expenseEntries]);
+
+  const monthlySurplus = totalMonthlyIncome - totalMonthlyExpense;
 
   // --- HANDLERS ---
-  const handleAddTransaction = (t: Omit<Transaction, 'id'>) => {
-    const newT = { ...t, id: Math.random().toString(36).substring(7) };
-    const updated = [newT, ...transactions];
-    handleSaveTransactions(updated);
-    setIsModalOpen(false);
+  const handleSaveEntry = (entry: Partial<RecurringEntry>) => {
+    if (editingEntry) {
+      const updated = recurringEntries.map(e => 
+        e.id === editingEntry.id ? { ...e, ...entry } as RecurringEntry : e
+      );
+      handleSaveRecurringEntries(updated);
+    } else {
+      const newEntry: RecurringEntry = {
+        id: Date.now().toString(),
+        name: entry.name || 'Neuer Eintrag',
+        amount: entry.amount || 0,
+        type: entry.type || entryType,
+        category: entry.category || 'Sonstiges',
+        frequency: entry.frequency || 'MONTHLY',
+        isActive: entry.isActive !== undefined ? entry.isActive : true,
+        notes: entry.notes || '',
+      };
+      handleSaveRecurringEntries([...recurringEntries, newEntry]);
+    }
+    setIsAddEntryModalOpen(false);
+    setEditingEntry(null);
+  };
+
+  const handleDeleteEntry = (id: string) => {
+    if (window.confirm('Diesen Eintrag wirklich löschen?')) {
+      handleSaveRecurringEntries(recurringEntries.filter(e => e.id !== id));
+    }
   };
 
   const handleAddDocument = (doc: PortfolioDocument) => {
@@ -143,8 +179,13 @@ const AuthenticatedApp: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
     handleSaveDocuments(updated);
   };
 
-  const handleDeleteDocument = (id: string) => {
-    if (window.confirm('Delete this document permanently?')) {
+  const handleDeleteDocument = async (id: string, storagePath?: string) => {
+    if (window.confirm('Dieses Dokument endgültig löschen?')) {
+      // Delete from Firebase Storage if cloud stored
+      if (storagePath) {
+        const { CloudService } = await import('./services/cloudService');
+        await CloudService.deleteFile(storagePath);
+      }
       const updated = documents.filter(d => d.id !== id);
       handleSaveDocuments(updated);
     }
@@ -178,19 +219,13 @@ const AuthenticatedApp: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
 
         <nav className="space-y-1 flex-1">
           <SidebarItem 
-            icon={<LayoutDashboard />} 
-            label="Dashboard" 
-            active={activeView === View.DASHBOARD} 
-            onClick={() => setActiveView(View.DASHBOARD)} 
-          />
-          <SidebarItem 
-            icon={<CreditCard />} 
-            label="Transactions" 
-            active={activeView === View.TRANSACTIONS} 
-            onClick={() => setActiveView(View.TRANSACTIONS)} 
+            icon={<Wallet />} 
+            label="Net Worth" 
+            active={activeView === View.NET_WORTH} 
+            onClick={() => setActiveView(View.NET_WORTH)} 
           />
            <div className="pt-4 pb-2 px-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">
-             Wealth
+             Vermögen
            </div>
           <SidebarItem 
             icon={<Briefcase />} 
@@ -239,13 +274,18 @@ const AuthenticatedApp: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
           </button>
 
           <div className="p-4 rounded-xl bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-700/50 mt-auto">
-            <p className="text-xs text-slate-400 mb-1">Monthly Budget</p>
+            <p className="text-xs text-slate-400 mb-1">Monatlicher Überschuss</p>
             <div className="flex justify-between items-end mb-2">
-              <span className="text-lg font-bold text-white">68%</span>
-              <span className="text-xs text-slate-400">Left</span>
+              <span className={`text-lg font-bold ${monthlySurplus >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                {isPrivacyMode ? '****' : `€${Math.round(monthlySurplus).toLocaleString()}`}
+              </span>
+              <span className="text-xs text-slate-400">/Monat</span>
             </div>
             <div className="w-full bg-slate-700 rounded-full h-1.5 overflow-hidden">
-              <div className="bg-primary h-full rounded-full" style={{ width: '68%' }}></div>
+              <div 
+                className={`h-full rounded-full ${monthlySurplus >= 0 ? 'bg-emerald-500' : 'bg-red-500'}`} 
+                style={{ width: `${Math.min(100, Math.abs(monthlySurplus / Math.max(totalMonthlyIncome, 1)) * 100)}%` }}
+              ></div>
             </div>
           </div>
         </div>
@@ -267,10 +307,13 @@ const AuthenticatedApp: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
               {isPrivacyMode ? <EyeOff size={20} /> : <Eye size={20} />}
             </button>
 
-            {activeView !== View.PORTFOLIO && activeView !== View.REAL_ESTATE && activeView !== View.DOCUMENTS && activeView !== View.SETTINGS && (
-              <Button onClick={() => setIsModalOpen(true)}>
+            {(activeView === View.INCOME || activeView === View.EXPENSES) && (
+              <Button onClick={() => {
+                setEntryType(activeView === View.INCOME ? 'INCOME' : 'EXPENSE');
+                setIsAddEntryModalOpen(true);
+              }}>
                 <Plus className="w-4 h-4" />
-                Add Transaction
+                Eintrag hinzufügen
               </Button>
             )}
             <div className="w-10 h-10 rounded-full bg-slate-700 border border-slate-600 overflow-hidden">
@@ -281,52 +324,12 @@ const AuthenticatedApp: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
 
         {/* SCROLLABLE AREA */}
         <div className="flex-1 overflow-y-auto p-8 scroll-smooth">
-          {activeView === View.DASHBOARD && (
-            <div className="space-y-8 max-w-7xl mx-auto">
-              {/* STATS ROW */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <StatCard title="Total Balance" value={totalBalance} icon={<Wallet className="text-white" />} trend="+2.5%" trendUp={true} privacy={isPrivacyMode} />
-                <StatCard title="Monthly Income" value={totalIncome} icon={<ArrowDownRight className="text-emerald-400" />} trend="+12%" trendUp={true} privacy={isPrivacyMode} />
-                <StatCard title="Monthly Expenses" value={totalExpense} icon={<ArrowUpRight className="text-red-400" />} trend="+4%" trendUp={false} privacy={isPrivacyMode} />
-              </div>
-
-              {/* MAIN CHART & INSIGHTS */}
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <Card title="Cash Flow Overview" className="lg:col-span-2">
-                  <OverviewChart transactions={transactions} privacy={isPrivacyMode} />
-                </Card>
-                <div className="space-y-6">
-                   <AIInsights transactions={transactions} />
-                   <Card title="Expense Breakdown">
-                     <CategoryPieChart transactions={transactions} privacy={isPrivacyMode} />
-                   </Card>
-                </div>
-              </div>
-
-              {/* RECENT TRANSACTIONS */}
-              <Card title="Recent Transactions">
-                <TransactionTable transactions={transactions.slice(0, 5)} privacy={isPrivacyMode} />
-              </Card>
-            </div>
-          )}
-
-          {activeView === View.TRANSACTIONS && (
-            <div className="max-w-7xl mx-auto space-y-6">
-              <Card>
-                <div className="flex items-center justify-between mb-6">
-                  <div className="relative w-64">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
-                    <Input placeholder="Search transactions..." className="pl-10" />
-                  </div>
-                  <div className="flex gap-2">
-                    <Select className="w-40">
-                      <option>All Categories</option>
-                      {Object.values(Category).map(c => <option key={c} value={c}>{c}</option>)}
-                    </Select>
-                  </div>
-                </div>
-                <TransactionTable transactions={transactions} privacy={isPrivacyMode} />
-              </Card>
+          {activeView === View.NET_WORTH && (
+            <div className="max-w-7xl mx-auto">
+              <NetWorthDashboard 
+                privacy={isPrivacyMode} 
+                onNavigate={(view) => setActiveView(view as View)}
+              />
             </div>
           )}
 
@@ -344,29 +347,57 @@ const AuthenticatedApp: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
 
           {activeView === View.INCOME && (
             <div className="max-w-7xl mx-auto space-y-8">
+               {/* Summary Cards */}
                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <StatCard title="Total Income (YTD)" value={totalIncome * 12} icon={<Banknote className="text-emerald-400" />} trend="+8.5%" trendUp={true} privacy={isPrivacyMode} />
-                <StatCard title="Average Monthly" value={totalIncome} icon={<TrendingUp className="text-emerald-400" />} trend="+2%" trendUp={true} privacy={isPrivacyMode} />
+                <StatCard title="Monatliches Einkommen" value={totalMonthlyIncome} icon={<Banknote className="text-emerald-400" />} trend={`${incomeEntries.length} Einträge`} trendUp={true} privacy={isPrivacyMode} />
+                <StatCard title="Jährliches Einkommen" value={totalMonthlyIncome * 12} icon={<TrendingUp className="text-emerald-400" />} trend="Hochrechnung" trendUp={true} privacy={isPrivacyMode} />
                 <Card className="flex flex-col justify-center">
-                  <p className="text-slate-400 text-sm font-medium mb-2">Top Source</p>
-                  <h3 className="text-2xl font-bold text-white">Salary & Income</h3>
-                  <div className="w-full bg-slate-700 rounded-full h-2 mt-3 overflow-hidden">
-                    <div className="bg-emerald-500 h-full rounded-full" style={{ width: '85%' }}></div>
-                  </div>
+                  <p className="text-slate-400 text-sm font-medium mb-2">Monatlicher Überschuss</p>
+                  <h3 className={`text-2xl font-bold ${monthlySurplus >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                    <Money value={monthlySurplus} privacy={isPrivacyMode} sign />
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-1">Einkommen - Ausgaben</p>
                 </Card>
                </div>
 
-               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                  <Card title="Income Trend" className="lg:col-span-2">
-                    <MonthlyBarChart transactions={transactions} type={TransactionType.INCOME} privacy={isPrivacyMode} />
-                  </Card>
-                  <Card title="Sources">
-                    <CategoryPieChart transactions={transactions} type={TransactionType.INCOME} privacy={isPrivacyMode} />
-                  </Card>
-               </div>
-
-               <Card title="Recent Income">
-                 <TransactionTable transactions={transactions.filter(t => t.type === TransactionType.INCOME)} privacy={isPrivacyMode} />
+               {/* Recurring Income Entries */}
+               <Card>
+                 <div className="flex items-center justify-between mb-4">
+                   <h3 className="text-lg font-semibold text-white">Wiederkehrende Einnahmen</h3>
+                   <Button onClick={() => { setEntryType('INCOME'); setIsAddEntryModalOpen(true); }}>
+                     <Plus size={16} /> Hinzufügen
+                   </Button>
+                 </div>
+                 {incomeEntries.length === 0 ? (
+                   <p className="text-slate-400 text-center py-8">Keine Einträge vorhanden. Füge deine erste Einnahmequelle hinzu.</p>
+                 ) : (
+                   <div className="space-y-2">
+                     {recurringEntries.filter(e => e.type === 'INCOME').map(entry => (
+                       <div key={entry.id} className={`flex items-center justify-between p-4 rounded-lg ${entry.isActive ? 'bg-slate-800' : 'bg-slate-800/50 opacity-60'}`}>
+                         <div className="flex items-center gap-4">
+                           <div className={`w-2 h-2 rounded-full ${entry.isActive ? 'bg-emerald-400' : 'bg-slate-500'}`} />
+                           <div>
+                             <p className="text-white font-medium">{entry.name}</p>
+                             <p className="text-xs text-slate-500">{entry.category} • {entry.frequency === 'MONTHLY' ? 'Monatlich' : entry.frequency === 'YEARLY' ? 'Jährlich' : 'Wöchentlich'}</p>
+                           </div>
+                         </div>
+                         <div className="flex items-center gap-4">
+                           <p className="text-emerald-400 font-bold">
+                             <Money value={entry.amount} privacy={isPrivacyMode} />
+                           </p>
+                           <div className="flex gap-1">
+                             <button onClick={() => { setEditingEntry(entry); setEntryType('INCOME'); setIsAddEntryModalOpen(true); }} className="p-2 hover:bg-slate-700 rounded-lg text-slate-400 hover:text-white">
+                               <Edit2 size={16} />
+                             </button>
+                             <button onClick={() => handleDeleteEntry(entry.id)} className="p-2 hover:bg-slate-700 rounded-lg text-slate-400 hover:text-red-400">
+                               <Trash2 size={16} />
+                             </button>
+                           </div>
+                         </div>
+                       </div>
+                     ))}
+                   </div>
+                 )}
                </Card>
 
                {/* Rental Income Tax Calculator */}
@@ -376,29 +407,57 @@ const AuthenticatedApp: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
 
           {activeView === View.EXPENSES && (
             <div className="max-w-7xl mx-auto space-y-8">
+               {/* Summary Cards */}
                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <StatCard title="Total Expenses (YTD)" value={totalExpense * 8} icon={<Wallet className="text-red-400" />} trend="+12%" trendUp={false} privacy={isPrivacyMode} />
-                <StatCard title="Average Monthly" value={totalExpense} icon={<TrendingDown className="text-red-400" />} trend="+4%" trendUp={false} privacy={isPrivacyMode} />
+                <StatCard title="Monatliche Ausgaben" value={totalMonthlyExpense} icon={<Wallet className="text-red-400" />} trend={`${expenseEntries.length} Einträge`} trendUp={false} privacy={isPrivacyMode} />
+                <StatCard title="Jährliche Ausgaben" value={totalMonthlyExpense * 12} icon={<TrendingDown className="text-red-400" />} trend="Hochrechnung" trendUp={false} privacy={isPrivacyMode} />
                 <Card className="flex flex-col justify-center">
-                   <p className="text-slate-400 text-sm font-medium mb-2">Top Category</p>
-                   <h3 className="text-2xl font-bold text-white">Housing</h3>
-                   <div className="w-full bg-slate-700 rounded-full h-2 mt-3 overflow-hidden">
-                    <div className="bg-red-500 h-full rounded-full" style={{ width: '45%' }}></div>
-                  </div>
+                  <p className="text-slate-400 text-sm font-medium mb-2">Sparquote</p>
+                  <h3 className={`text-2xl font-bold ${monthlySurplus >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                    {totalMonthlyIncome > 0 ? ((monthlySurplus / totalMonthlyIncome) * 100).toFixed(1) : 0}%
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-1">vom Einkommen</p>
                 </Card>
                </div>
 
-               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                  <Card title="Monthly Expenses" className="lg:col-span-2">
-                    <MonthlyBarChart transactions={transactions} type={TransactionType.EXPENSE} privacy={isPrivacyMode} />
-                  </Card>
-                  <Card title="Category Breakdown">
-                    <CategoryPieChart transactions={transactions} type={TransactionType.EXPENSE} privacy={isPrivacyMode} />
-                  </Card>
-               </div>
-
-               <Card title="Recent Expenses">
-                 <TransactionTable transactions={transactions.filter(t => t.type === TransactionType.EXPENSE)} privacy={isPrivacyMode} />
+               {/* Recurring Expense Entries */}
+               <Card>
+                 <div className="flex items-center justify-between mb-4">
+                   <h3 className="text-lg font-semibold text-white">Wiederkehrende Ausgaben</h3>
+                   <Button onClick={() => { setEntryType('EXPENSE'); setIsAddEntryModalOpen(true); }}>
+                     <Plus size={16} /> Hinzufügen
+                   </Button>
+                 </div>
+                 {expenseEntries.length === 0 ? (
+                   <p className="text-slate-400 text-center py-8">Keine Einträge vorhanden. Füge deine erste Ausgabe hinzu.</p>
+                 ) : (
+                   <div className="space-y-2">
+                     {recurringEntries.filter(e => e.type === 'EXPENSE').map(entry => (
+                       <div key={entry.id} className={`flex items-center justify-between p-4 rounded-lg ${entry.isActive ? 'bg-slate-800' : 'bg-slate-800/50 opacity-60'}`}>
+                         <div className="flex items-center gap-4">
+                           <div className={`w-2 h-2 rounded-full ${entry.isActive ? 'bg-red-400' : 'bg-slate-500'}`} />
+                           <div>
+                             <p className="text-white font-medium">{entry.name}</p>
+                             <p className="text-xs text-slate-500">{entry.category} • {entry.frequency === 'MONTHLY' ? 'Monatlich' : entry.frequency === 'YEARLY' ? 'Jährlich' : 'Wöchentlich'}</p>
+                           </div>
+                         </div>
+                         <div className="flex items-center gap-4">
+                           <p className="text-red-400 font-bold">
+                             <Money value={entry.amount} privacy={isPrivacyMode} />
+                           </p>
+                           <div className="flex gap-1">
+                             <button onClick={() => { setEditingEntry(entry); setEntryType('EXPENSE'); setIsAddEntryModalOpen(true); }} className="p-2 hover:bg-slate-700 rounded-lg text-slate-400 hover:text-white">
+                               <Edit2 size={16} />
+                             </button>
+                             <button onClick={() => handleDeleteEntry(entry.id)} className="p-2 hover:bg-slate-700 rounded-lg text-slate-400 hover:text-red-400">
+                               <Trash2 size={16} />
+                             </button>
+                           </div>
+                         </div>
+                       </div>
+                     ))}
+                   </div>
+                 )}
                </Card>
             </div>
           )}
@@ -421,9 +480,14 @@ const AuthenticatedApp: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
         </div>
       </main>
 
-      {/* ADD TRANSACTION MODAL */}
-      {isModalOpen && (
-        <TransactionModal onClose={() => setIsModalOpen(false)} onSave={handleAddTransaction} />
+      {/* ADD/EDIT RECURRING ENTRY MODAL */}
+      {isAddEntryModalOpen && (
+        <RecurringEntryModal 
+          onClose={() => { setIsAddEntryModalOpen(false); setEditingEntry(null); }} 
+          onSave={handleSaveEntry}
+          initialData={editingEntry || undefined}
+          type={entryType}
+        />
       )}
     </div>
   );
@@ -462,120 +526,56 @@ const StatCard: React.FC<{ title: string; value: number; icon: React.ReactNode; 
   </Card>
 );
 
-const TransactionTable: React.FC<{ transactions: Transaction[], privacy: boolean }> = ({ transactions, privacy }) => (
-  <div className="overflow-x-auto">
-    <table className="w-full text-left border-collapse">
-      <thead>
-        <tr className="text-slate-400 text-sm border-b border-slate-800">
-          <th className="py-3 font-medium pl-2">Description</th>
-          <th className="py-3 font-medium">Category</th>
-          <th className="py-3 font-medium">Date</th>
-          <th className="py-3 font-medium text-right pr-2">Amount</th>
-        </tr>
-      </thead>
-      <tbody>
-        {transactions.map(t => (
-          <tr key={t.id} className="border-b border-slate-800/50 hover:bg-white/5 transition-colors group">
-            <td className="py-4 pl-2">
-              <div className="flex items-center gap-3">
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center ${t.type === TransactionType.INCOME ? 'bg-emerald-500/10 text-emerald-500' : 'bg-red-500/10 text-red-500'}`}>
-                  {t.type === TransactionType.INCOME ? <ArrowDownRight size={14} /> : <ArrowUpRight size={14} />}
-                </div>
-                <span className="font-medium text-slate-200">{t.description}</span>
-              </div>
-            </td>
-            <td className="py-4">
-              <Badge>{t.category}</Badge>
-            </td>
-            <td className="py-4 text-slate-400 text-sm">{t.date}</td>
-            <td className={`py-4 text-right font-medium pr-2 ${t.type === TransactionType.INCOME ? 'text-emerald-400' : 'text-slate-200'}`}>
-              {t.type === TransactionType.INCOME ? '+' : '-'}
-              <Money value={Math.abs(t.amount)} privacy={privacy} />
-            </td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  </div>
-);
-
-const TransactionModal: React.FC<{ onClose: () => void; onSave: (t: any) => void }> = ({ onClose, onSave }) => {
-  const [desc, setDesc] = useState('');
-  const [amount, setAmount] = useState('');
-  const [type, setType] = useState<TransactionType>(TransactionType.EXPENSE);
-  const [category, setCategory] = useState<string>(Category.MISC);
-  const [loadingCat, setLoadingCat] = useState(false);
-
-  const handleAutoCategorize = async () => {
-    if (!desc) return;
-    setLoadingCat(true);
-    try {
-      const cat = await autoCategorizeTransaction(desc);
-      setCategory(cat);
-    } finally {
-      setLoadingCat(false);
-    }
-  };
+// Recurring Entry Modal
+const RecurringEntryModal: React.FC<{ 
+  onClose: () => void; 
+  onSave: (entry: Partial<RecurringEntry>) => void;
+  initialData?: RecurringEntry;
+  type: 'INCOME' | 'EXPENSE';
+}> = ({ onClose, onSave, initialData, type }) => {
+  const [name, setName] = useState(initialData?.name || '');
+  const [amount, setAmount] = useState(initialData?.amount?.toString() || '');
+  const [category, setCategory] = useState(initialData?.category || 'Sonstiges');
+  const [frequency, setFrequency] = useState<'MONTHLY' | 'YEARLY' | 'WEEKLY'>(initialData?.frequency || 'MONTHLY');
+  const [isActive, setIsActive] = useState(initialData?.isActive !== undefined ? initialData.isActive : true);
+  const [notes, setNotes] = useState(initialData?.notes || '');
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     onSave({
-      description: desc,
+      id: initialData?.id,
+      name,
       amount: parseFloat(amount),
-      type,
+      type: initialData?.type || type,
       category,
-      date: new Date().toISOString().split('T')[0]
+      frequency,
+      isActive,
+      notes,
     });
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
       <Card className="w-full max-w-md relative animate-in fade-in zoom-in duration-200">
-        <h2 className="text-xl font-bold text-white mb-6">Add Transaction</h2>
+        <button onClick={onClose} className="absolute top-4 right-4 text-slate-400 hover:text-white">
+          <X size={20} />
+        </button>
+        <h2 className="text-xl font-bold text-white mb-6">
+          {initialData ? 'Eintrag bearbeiten' : `${type === 'INCOME' ? 'Einnahme' : 'Ausgabe'} hinzufügen`}
+        </h2>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm text-slate-400 mb-1">Type</label>
-            <div className="flex bg-darker p-1 rounded-lg border border-slate-700">
-              <button 
-                type="button"
-                onClick={() => setType(TransactionType.EXPENSE)}
-                className={`flex-1 py-2 rounded-md text-sm font-medium transition-colors ${type === TransactionType.EXPENSE ? 'bg-slate-700 text-white' : 'text-slate-400 hover:text-white'}`}
-              >
-                Expense
-              </button>
-              <button 
-                type="button"
-                onClick={() => setType(TransactionType.INCOME)}
-                className={`flex-1 py-2 rounded-md text-sm font-medium transition-colors ${type === TransactionType.INCOME ? 'bg-slate-700 text-white' : 'text-slate-400 hover:text-white'}`}
-              >
-                Income
-              </button>
-            </div>
+            <label className="block text-sm text-slate-400 mb-1">Name</label>
+            <Input 
+              value={name} 
+              onChange={(e) => setName(e.target.value)} 
+              placeholder={type === 'INCOME' ? 'z.B. Gehalt, Mieteinnahmen' : 'z.B. Miete, Netflix'} 
+              required 
+            />
           </div>
 
           <div>
-            <label className="block text-sm text-slate-400 mb-1">Description</label>
-            <div className="flex gap-2">
-              <Input 
-                value={desc} 
-                onChange={(e) => setDesc(e.target.value)} 
-                placeholder="e.g. Grocery Shopping" 
-                required 
-              />
-              <button 
-                type="button"
-                onClick={handleAutoCategorize}
-                disabled={!desc || loadingCat}
-                className="bg-primary/20 hover:bg-primary/30 border border-primary/50 text-primary p-3 rounded-lg transition-colors disabled:opacity-50"
-                title="Auto-categorize with AI"
-              >
-                <Wand2 className={`w-5 h-5 ${loadingCat ? 'animate-spin' : ''}`} />
-              </button>
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-sm text-slate-400 mb-1">Amount</label>
+            <label className="block text-sm text-slate-400 mb-1">Betrag (€)</label>
             <Input 
               type="number" 
               step="0.01" 
@@ -587,15 +587,51 @@ const TransactionModal: React.FC<{ onClose: () => void; onSave: (t: any) => void
           </div>
 
           <div>
-            <label className="block text-sm text-slate-400 mb-1">Category</label>
+            <label className="block text-sm text-slate-400 mb-1">Kategorie</label>
             <Select value={category} onChange={(e) => setCategory(e.target.value)}>
-              {Object.values(Category).map(c => <option key={c} value={c}>{c}</option>)}
+              {BUDGET_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
             </Select>
           </div>
 
+          <div>
+            <label className="block text-sm text-slate-400 mb-1">Häufigkeit</label>
+            <div className="flex bg-darker p-1 rounded-lg border border-slate-700">
+              {(['WEEKLY', 'MONTHLY', 'YEARLY'] as const).map(f => (
+                <button 
+                  key={f}
+                  type="button"
+                  onClick={() => setFrequency(f)}
+                  className={`flex-1 py-2 rounded-md text-sm font-medium transition-colors ${frequency === f ? 'bg-slate-700 text-white' : 'text-slate-400 hover:text-white'}`}
+                >
+                  {f === 'WEEKLY' ? 'Wöchentlich' : f === 'MONTHLY' ? 'Monatlich' : 'Jährlich'}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm text-slate-400 mb-1">Notizen (optional)</label>
+            <Input 
+              value={notes} 
+              onChange={(e) => setNotes(e.target.value)} 
+              placeholder="Zusätzliche Infos..." 
+            />
+          </div>
+
+          <div className="flex items-center gap-2">
+            <input 
+              type="checkbox" 
+              id="isActive" 
+              checked={isActive} 
+              onChange={(e) => setIsActive(e.target.checked)}
+              className="w-4 h-4 rounded border-slate-600 bg-slate-700 text-primary"
+            />
+            <label htmlFor="isActive" className="text-sm text-slate-300">Aktiv (wird in Berechnung einbezogen)</label>
+          </div>
+
           <div className="flex gap-3 mt-6">
-            <Button type="button" variant="ghost" onClick={onClose} className="flex-1">Cancel</Button>
-            <Button type="submit" className="flex-1">Save Transaction</Button>
+            <Button type="button" variant="ghost" onClick={onClose} className="flex-1">Abbrechen</Button>
+            <Button type="submit" className="flex-1">Speichern</Button>
           </div>
         </form>
       </Card>

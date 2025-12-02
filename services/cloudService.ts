@@ -1,6 +1,7 @@
 
-import { initializeApp, getApps, getApp } from 'firebase/app';
+import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app';
 import { getFirestore, collection, getDocs, setDoc, doc, deleteDoc, writeBatch } from 'firebase/firestore';
+import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { CloudConfig } from '../types';
 
 const CONFIG_KEY = 'financecs_cloud_config';
@@ -184,6 +185,74 @@ export const CloudService = {
     } catch (e) {
       console.error('Cloud Auth Error:', e);
       return { valid: false, user: null };
+    }
+  },
+
+  // --- FIREBASE STORAGE FOR FILES ---
+  
+  getStorage: () => {
+    const config = CloudService.getConfig();
+    if (!config) return null;
+
+    try {
+      let app: FirebaseApp;
+      if (getApps().length === 0) {
+        app = initializeApp(config);
+      } else {
+        app = getApp();
+      }
+      return getStorage(app);
+    } catch (e) {
+      console.error("Firebase Storage Init Error", e);
+      return null;
+    }
+  },
+
+  uploadFile: async (file: File, path: string): Promise<string | null> => {
+    const storage = CloudService.getStorage();
+    if (!storage) {
+      console.error('Firebase Storage not available');
+      return null;
+    }
+
+    try {
+      const storageRef = ref(storage, path);
+      const snapshot = await uploadBytes(storageRef, file);
+      const downloadURL = await getDownloadURL(snapshot.ref);
+      return downloadURL;
+    } catch (e) {
+      console.error('File upload failed:', e);
+      return null;
+    }
+  },
+
+  deleteFile: async (path: string): Promise<boolean> => {
+    const storage = CloudService.getStorage();
+    if (!storage) {
+      console.error('Firebase Storage not available');
+      return false;
+    }
+
+    try {
+      const storageRef = ref(storage, path);
+      await deleteObject(storageRef);
+      return true;
+    } catch (e) {
+      console.error('File delete failed:', e);
+      return false;
+    }
+  },
+
+  getFileURL: async (path: string): Promise<string | null> => {
+    const storage = CloudService.getStorage();
+    if (!storage) return null;
+
+    try {
+      const storageRef = ref(storage, path);
+      return await getDownloadURL(storageRef);
+    } catch (e) {
+      console.error('Get file URL failed:', e);
+      return null;
     }
   }
 };

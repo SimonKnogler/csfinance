@@ -116,7 +116,9 @@ export interface PortfolioDocument {
   date: string;
   size: string;
   category: 'Tax' | 'Contract' | 'Statement' | 'Other';
-  data?: string; // Base64 data string for in-memory storage
+  data?: string; // Base64 data string for in-memory/local storage
+  fileUrl?: string; // Firebase Storage download URL
+  storagePath?: string; // Firebase Storage path for deletion
 }
 
 // --- REAL ESTATE TYPES ---
@@ -157,5 +159,18 @@ export interface RealEstateProperty {
   savingsTarget: number; // Sparwert/Rücklage Ziel
   currentSavings: number; // Aktuelle Rücklagen
   
+  notes?: string;
+}
+
+// --- BUDGET TYPES ---
+
+export interface RecurringEntry {
+  id: string;
+  name: string;
+  amount: number;
+  type: 'INCOME' | 'EXPENSE';
+  category: string;
+  frequency: 'MONTHLY' | 'YEARLY' | 'WEEKLY';
+  isActive: boolean;
   notes?: string;
 }

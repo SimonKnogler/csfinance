@@ -1,8 +1,8 @@
 
-import { Transaction, StockHolding, PortfolioDocument, User, CashHolding, RealEstateProperty } from '../types';
+import { Transaction, StockHolding, PortfolioDocument, User, CashHolding, RealEstateProperty, RecurringEntry } from '../types';
 
 const DB_NAME = 'FinanceCSDB';
-const DB_VERSION = 3; // Incremented to add realEstate store
+const DB_VERSION = 4; // Incremented to add recurringEntries store
 
 const STORES = {
   USERS: 'users',
@@ -11,7 +11,8 @@ const STORES = {
   CASH: 'cash',
   DOCUMENTS: 'documents',
   SESSION: 'session',
-  REAL_ESTATE: 'realEstate'
+  REAL_ESTATE: 'realEstate',
+  RECURRING_ENTRIES: 'recurringEntries'
 };
 
 export const initDB = (): Promise<IDBDatabase> => {
@@ -50,6 +51,9 @@ export const initDB = (): Promise<IDBDatabase> => {
       }
       if (!db.objectStoreNames.contains(STORES.REAL_ESTATE)) {
         db.createObjectStore(STORES.REAL_ESTATE, { keyPath: 'id' });
+      }
+      if (!db.objectStoreNames.contains(STORES.RECURRING_ENTRIES)) {
+        db.createObjectStore(STORES.RECURRING_ENTRIES, { keyPath: 'id' });
       }
     };
   });

@@ -1,5 +1,5 @@
 
-import { Transaction, StockHolding, PortfolioDocument, User, CashHolding, RealEstateProperty } from '../types';
+import { Transaction, StockHolding, PortfolioDocument, User, CashHolding, RealEstateProperty, RecurringEntry } from '../types';
 import { getInitialPortfolio } from './yahooFinanceService';
 import { IDBService } from './idbService';
 import { CloudService } from './cloudService';
@@ -181,6 +181,35 @@ export const StorageService = {
       }
     }
     return await IDBService.getAll<RealEstateProperty>('realEstate');
+  },
+
+  // --- RECURRING ENTRIES (Budget) ---
+  saveRecurringEntries: async (entries: RecurringEntry[]) => {
+    await IDBService.clear('recurringEntries');
+    const localPromises = entries.map(e => IDBService.put('recurringEntries', e));
+    await Promise.all(localPromises);
+
+    if (CloudService.getConfig()) {
+      CloudService.saveAll('recurringEntries', entries)
+        .catch(e => console.error("Cloud recurring entries sync failed:", e));
+    }
+  },
+
+  getRecurringEntries: async (): Promise<RecurringEntry[]> => {
+    if (CloudService.getConfig()) {
+      try {
+        const cloudData = await CloudService.getAll<RecurringEntry>('recurringEntries');
+        if (cloudData.length > 0) {
+          await IDBService.clear('recurringEntries');
+          const promises = cloudData.map(e => IDBService.put('recurringEntries', e));
+          await Promise.all(promises);
+          return cloudData;
+        }
+      } catch (e) {
+        console.warn("Could not reach cloud for recurring entries, falling back to local.", e);
+      }
+    }
+    return await IDBService.getAll<RecurringEntry>('recurringEntries');
   },
 
   // --- DOCUMENTS ---
