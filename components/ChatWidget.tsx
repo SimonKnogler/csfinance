@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { MessageCircle, X, Send, Loader2, Bot, User, Sparkles } from 'lucide-react';
-import { chatWithOpenAI, isOpenAIConfigured, ChatMessage } from '../services/openaiService';
+import { chatWithAI, isGeminiConfigured, ChatMessage } from '../services/geminiService';
 
 export const ChatWidget: React.FC = () => {
   const [isOpen, setIsOpen] = useState(false);
@@ -38,8 +38,8 @@ export const ChatWidget: React.FC = () => {
     setIsLoading(true);
 
     try {
-      // Get AI response from ChatGPT
-      const response = await chatWithOpenAI(userMessage, messages);
+      // Get AI response from Gemini
+      const response = await chatWithAI(userMessage, messages);
       setMessages([...newMessages, { role: 'assistant', content: response }]);
     } catch (error) {
       setMessages([...newMessages, { role: 'assistant', content: '❌ Fehler beim Senden der Nachricht.' }]);
@@ -55,7 +55,7 @@ export const ChatWidget: React.FC = () => {
     }
   };
 
-  const isConfigured = isOpenAIConfigured();
+  const isConfigured = isGeminiConfigured();
 
   return (
     <>
@@ -84,7 +84,7 @@ export const ChatWidget: React.FC = () => {
               </div>
               <div>
                 <h3 className="font-semibold text-white text-sm">Finanz-Assistent</h3>
-                <p className="text-[10px] text-indigo-200">Powered by ChatGPT</p>
+                <p className="text-[10px] text-indigo-200">Powered by Gemini AI</p>
               </div>
             </div>
             <button
@@ -166,7 +166,7 @@ export const ChatWidget: React.FC = () => {
           <div className="p-3 border-t border-slate-700 bg-slate-900/80">
             {!isConfigured && (
               <div className="mb-2 px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-200 text-xs">
-                ⚠️ OpenAI API Key nicht konfiguriert
+                ⚠️ Gemini API Key nicht konfiguriert
               </div>
             )}
             <div className="flex items-center gap-2">
@@ -189,7 +189,7 @@ export const ChatWidget: React.FC = () => {
               </button>
             </div>
             <p className="text-[10px] text-slate-500 text-center mt-2">
-              Keine professionelle Finanzberatung • Powered by ChatGPT
+              Keine professionelle Finanzberatung • Powered by Gemini
             </p>
           </div>
         </div>
