@@ -85,11 +85,19 @@ export const Portfolio: React.FC<PortfolioProps> = ({ privacy }) => {
         setCashHoldings(cash);
         const realEstate = await StorageService.getRealEstate();
         setRealEstateHoldings(realEstate);
-        const newsData = await fetchMarketNews();
-        setNews(newsData);
      };
      load();
   }, []);
+
+  // Fetch news based on holdings (separate effect to use holding symbols)
+  useEffect(() => {
+    const loadNews = async () => {
+      const symbols = holdings.map(h => h.symbol);
+      const newsData = await fetchMarketNews(symbols);
+      setNews(newsData);
+    };
+    loadNews();
+  }, [holdings]);
 
   // --- PERSISTENCE ---
   // Wrapper to save state
@@ -167,9 +175,10 @@ export const Portfolio: React.FC<PortfolioProps> = ({ privacy }) => {
         const msciData = allMsciData.filter(p => p.timestamp >= rangeStartTimestamp);
         const msciBaseline = msciData.length > 0 ? msciData[0].price : 100;
         
-        // Build timestamp map from all holdings - only include data from range start
+        // Build timestamp map from all holdings + MSCI - only include data from range start
         const timestampMap = new Map<number, { date: string; pricesBySymbol: Map<string, number> }>();
         
+        // Add holdings data to timestamp map
         holdings.forEach(holding => {
           const data = historyMap.get(holding.symbol) || [];
           data.forEach(point => {
@@ -186,7 +195,7 @@ export const Portfolio: React.FC<PortfolioProps> = ({ privacy }) => {
           });
         });
         
-        // Add MSCI timestamps
+        // Add MSCI data to the same timestamp map (treat like a holding for forward-fill)
         msciData.forEach(point => {
           if (!timestampMap.has(point.timestamp)) {
             timestampMap.set(point.timestamp, {
@@ -194,6 +203,8 @@ export const Portfolio: React.FC<PortfolioProps> = ({ privacy }) => {
               pricesBySymbol: new Map(),
             });
           }
+          // Store MSCI price in the same map as holdings
+          timestampMap.get(point.timestamp)!.pricesBySymbol.set('URTH', point.price);
         });
         
         const sortedTimestamps = Array.from(timestampMap.keys()).sort((a, b) => a - b);
@@ -203,8 +214,10 @@ export const Portfolio: React.FC<PortfolioProps> = ({ privacy }) => {
           return;
         }
         
-        // Track last known price for each symbol (forward fill gaps)
+        // Track last known price for each symbol including MSCI (forward fill gaps)
         const lastKnownPrices = new Map<string, number>();
+        // Initialize MSCI baseline
+        lastKnownPrices.set('URTH', msciBaseline);
         
         const points = sortedTimestamps.map(timestamp => {
           const { date, pricesBySymbol } = timestampMap.get(timestamp)!;
@@ -212,6 +225,7 @@ export const Portfolio: React.FC<PortfolioProps> = ({ privacy }) => {
           let meValue = 0;
           let carolinaValue = 0;
           
+          // Process holdings with forward-fill
           holdings.forEach(holding => {
             let price = pricesBySymbol.get(holding.symbol);
             if (price !== undefined) {
@@ -233,9 +247,13 @@ export const Portfolio: React.FC<PortfolioProps> = ({ privacy }) => {
           
           const total = meValue + carolinaValue;
           
-          // Get MSCI price for this timestamp
-          const msciPoint = msciData.find(p => p.timestamp === timestamp);
-          const msciPrice = msciPoint?.price || msciBaseline;
+          // Get MSCI price with forward-fill (same logic as holdings)
+          let msciPrice = pricesBySymbol.get('URTH');
+          if (msciPrice !== undefined) {
+            lastKnownPrices.set('URTH', msciPrice);
+          } else {
+            msciPrice = lastKnownPrices.get('URTH') || msciBaseline;
+          }
           
           return {
             date,

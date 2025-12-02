@@ -14,12 +14,16 @@ import {
   ChevronDown,
   ChevronUp,
   SlidersHorizontal,
-  LayoutGrid
+  LayoutGrid,
+  HardHat,
+  Save,
+  Copy
 } from 'lucide-react';
 
 enum SubView {
   OVERVIEW = 'Übersicht',
   SIMULATOR = 'Simulator',
+  BAUKOSTEN = 'Baukosten',
 }
 import { 
   ResponsiveContainer, 
@@ -199,6 +203,14 @@ export const RealEstate: React.FC<RealEstateProps> = ({ privacy }) => {
             >
               <SlidersHorizontal size={16} /> Simulator
             </button>
+            <button
+              onClick={() => setSubView(SubView.BAUKOSTEN)}
+              className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                subView === SubView.BAUKOSTEN ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <HardHat size={16} /> Baukosten
+            </button>
           </div>
           {subView === SubView.OVERVIEW && (
             <Button onClick={() => setIsAddModalOpen(true)}>
@@ -306,6 +318,11 @@ export const RealEstate: React.FC<RealEstateProps> = ({ privacy }) => {
       {/* SIMULATOR VIEW */}
       {subView === SubView.SIMULATOR && (
         <PropertySimulator properties={properties} privacy={privacy} />
+      )}
+
+      {/* BAUKOSTEN VIEW */}
+      {subView === SubView.BAUKOSTEN && (
+        <BuildingCostSimulator privacy={privacy} />
       )}
 
       {/* Add/Edit Modal */}
@@ -1474,6 +1491,516 @@ const PropertySimulator: React.FC<{
             </tbody>
           </table>
         </div>
+      </Card>
+    </div>
+  );
+};
+
+// --- Building Cost Simulator ---
+interface CostCategory {
+  id: string;
+  name: string;
+  description: string;
+  pricePerSqm: number;
+  quantity: number;
+  unit: string;
+  isEnabled: boolean;
+}
+
+interface BuildingScenario {
+  id: string;
+  name: string;
+  categories: CostCategory[];
+  landPrice: number;
+  buildingSize: number;
+  contingency: number;
+}
+
+const DEFAULT_CATEGORIES: CostCategory[] = [
+  { id: 'demolition', name: 'Abriss/Rückbau', description: 'Bestehendes Gebäude entfernen', pricePerSqm: 80, quantity: 0, unit: 'm²', isEnabled: false },
+  { id: 'basement', name: 'Keller', description: 'Untergeschoss inkl. Abdichtung', pricePerSqm: 600, quantity: 0, unit: 'm²', isEnabled: false },
+  { id: 'foundation', name: 'Bodenplatte', description: 'Alternative zum Keller', pricePerSqm: 180, quantity: 0, unit: 'm²', isEnabled: true },
+  { id: 'shell-traditional', name: 'Rohbau (Massiv)', description: 'Traditionelle Bauweise', pricePerSqm: 650, quantity: 0, unit: 'm²', isEnabled: true },
+  { id: 'shell-prefab', name: 'Rohbau (Fertighaus)', description: 'Fertighausbau', pricePerSqm: 550, quantity: 0, unit: 'm²', isEnabled: false },
+  { id: 'roof', name: 'Dach', description: 'Dachstuhl + Eindeckung', pricePerSqm: 180, quantity: 0, unit: 'm² Dach', isEnabled: true },
+  { id: 'windows', name: 'Fenster & Türen', description: 'Fenster, Haustür, Innentüren', pricePerSqm: 120, quantity: 0, unit: 'm² Wohnfl.', isEnabled: true },
+  { id: 'facade', name: 'Fassade & Dämmung', description: 'Außenputz, WDVS', pricePerSqm: 140, quantity: 0, unit: 'm² Fassade', isEnabled: true },
+  { id: 'electrical', name: 'Elektrik', description: 'Elektroinstallation komplett', pricePerSqm: 85, quantity: 0, unit: 'm² Wohnfl.', isEnabled: true },
+  { id: 'plumbing', name: 'Sanitär', description: 'Wasserinstallation, Bäder', pricePerSqm: 95, quantity: 0, unit: 'm² Wohnfl.', isEnabled: true },
+  { id: 'heating', name: 'Heizung', description: 'Wärmepumpe/Gas + Fußbodenheizung', pricePerSqm: 110, quantity: 0, unit: 'm² Wohnfl.', isEnabled: true },
+  { id: 'drywall', name: 'Trockenbau', description: 'Wände, Decken, Dämmung', pricePerSqm: 65, quantity: 0, unit: 'm² Wohnfl.', isEnabled: true },
+  { id: 'floors', name: 'Bodenbeläge', description: 'Parkett, Fliesen, Estrich', pricePerSqm: 75, quantity: 0, unit: 'm² Wohnfl.', isEnabled: true },
+  { id: 'painting', name: 'Malerarbeiten', description: 'Innenputz, Streichen', pricePerSqm: 35, quantity: 0, unit: 'm² Wohnfl.', isEnabled: true },
+  { id: 'kitchen', name: 'Küche', description: 'Einbauküche komplett', pricePerSqm: 0, quantity: 15000, unit: '€ pauschal', isEnabled: true },
+  { id: 'parking', name: 'Stellplätze', description: 'Carport oder Garage', pricePerSqm: 0, quantity: 15000, unit: '€/Stellplatz', isEnabled: false },
+  { id: 'garden', name: 'Garten & Außenanlage', description: 'Terrasse, Rasen, Zaun', pricePerSqm: 45, quantity: 0, unit: 'm² Garten', isEnabled: false },
+  { id: 'driveway', name: 'Einfahrt & Wege', description: 'Pflaster, Asphalt', pricePerSqm: 80, quantity: 0, unit: 'm²', isEnabled: false },
+];
+
+const ANCILLARY_COSTS = [
+  { id: 'notar', name: 'Notar & Grundbuch', percent: 2.0 },
+  { id: 'grunderwerbsteuer', name: 'Grunderwerbsteuer', percent: 6.5 }, // Bayern: 3.5%, NRW: 6.5%
+  { id: 'makler', name: 'Maklerprovision', percent: 3.57 },
+  { id: 'architekt', name: 'Architekt/Planer', percent: 10.0 },
+  { id: 'baugenehmigung', name: 'Baugenehmigung', percent: 0.5 },
+  { id: 'bauleitung', name: 'Bauleitung', percent: 3.0 },
+  { id: 'versicherung', name: 'Bauversicherungen', percent: 0.3 },
+];
+
+const BuildingCostSimulator: React.FC<{ privacy: boolean }> = ({ privacy }) => {
+  // Scenarios for comparison
+  const [scenarios, setScenarios] = useState<BuildingScenario[]>([
+    {
+      id: '1',
+      name: 'Szenario 1',
+      categories: DEFAULT_CATEGORIES.map(c => ({ ...c, quantity: c.pricePerSqm > 0 ? 150 : c.quantity })),
+      landPrice: 150000,
+      buildingSize: 150,
+      contingency: 10,
+    }
+  ]);
+  
+  const [activeScenarioId, setActiveScenarioId] = useState('1');
+  const [grunderwerbsteuerRate, setGrunderwerbsteuerRate] = useState(6.5);
+  
+  const activeScenario = scenarios.find(s => s.id === activeScenarioId) || scenarios[0];
+  
+  // Calculate costs for a scenario
+  const calculateCosts = (scenario: BuildingScenario) => {
+    let buildingCosts = 0;
+    const breakdown: { name: string; cost: number }[] = [];
+    
+    scenario.categories.forEach(cat => {
+      if (!cat.isEnabled) return;
+      
+      let cost = 0;
+      if (cat.unit === '€ pauschal' || cat.unit === '€/Stellplatz') {
+        cost = cat.quantity;
+      } else if (cat.unit === 'm² Wohnfl.') {
+        cost = cat.pricePerSqm * scenario.buildingSize;
+      } else {
+        cost = cat.pricePerSqm * cat.quantity;
+      }
+      
+      if (cost > 0) {
+        buildingCosts += cost;
+        breakdown.push({ name: cat.name, cost });
+      }
+    });
+    
+    // Ancillary costs
+    const totalBase = scenario.landPrice + buildingCosts;
+    let ancillaryCosts = 0;
+    const ancillaryBreakdown: { name: string; cost: number }[] = [];
+    
+    ANCILLARY_COSTS.forEach(cost => {
+      let rate = cost.percent;
+      if (cost.id === 'grunderwerbsteuer') {
+        rate = grunderwerbsteuerRate;
+      }
+      const amount = (cost.id === 'makler' || cost.id === 'notar' || cost.id === 'grunderwerbsteuer')
+        ? scenario.landPrice * (rate / 100)
+        : buildingCosts * (rate / 100);
+      ancillaryCosts += amount;
+      ancillaryBreakdown.push({ name: cost.name, cost: amount });
+    });
+    
+    // Contingency
+    const contingencyAmount = buildingCosts * (scenario.contingency / 100);
+    
+    return {
+      landPrice: scenario.landPrice,
+      buildingCosts,
+      ancillaryCosts,
+      contingencyAmount,
+      totalCost: scenario.landPrice + buildingCosts + ancillaryCosts + contingencyAmount,
+      breakdown,
+      ancillaryBreakdown,
+      pricePerSqm: Math.round((scenario.landPrice + buildingCosts + ancillaryCosts + contingencyAmount) / scenario.buildingSize),
+    };
+  };
+  
+  const costs = calculateCosts(activeScenario);
+  
+  // Update category in active scenario
+  const updateCategory = (categoryId: string, updates: Partial<CostCategory>) => {
+    setScenarios(prev => prev.map(s => {
+      if (s.id !== activeScenarioId) return s;
+      return {
+        ...s,
+        categories: s.categories.map(c => 
+          c.id === categoryId ? { ...c, ...updates } : c
+        )
+      };
+    }));
+  };
+  
+  // Update scenario settings
+  const updateScenario = (updates: Partial<BuildingScenario>) => {
+    setScenarios(prev => prev.map(s => 
+      s.id === activeScenarioId ? { ...s, ...updates } : s
+    ));
+  };
+  
+  // Add new scenario
+  const addScenario = () => {
+    const newId = Date.now().toString();
+    setScenarios(prev => [...prev, {
+      id: newId,
+      name: `Szenario ${prev.length + 1}`,
+      categories: DEFAULT_CATEGORIES.map(c => ({ ...c, quantity: c.pricePerSqm > 0 ? 150 : c.quantity })),
+      landPrice: 150000,
+      buildingSize: 150,
+      contingency: 10,
+    }]);
+    setActiveScenarioId(newId);
+  };
+  
+  // Duplicate scenario
+  const duplicateScenario = () => {
+    const newId = Date.now().toString();
+    setScenarios(prev => [...prev, {
+      ...activeScenario,
+      id: newId,
+      name: `${activeScenario.name} (Kopie)`,
+    }]);
+    setActiveScenarioId(newId);
+  };
+  
+  // Delete scenario
+  const deleteScenario = (id: string) => {
+    if (scenarios.length <= 1) return;
+    setScenarios(prev => prev.filter(s => s.id !== id));
+    if (activeScenarioId === id) {
+      setActiveScenarioId(scenarios.find(s => s.id !== id)?.id || '1');
+    }
+  };
+  
+  // Comparison data
+  const comparisonData = scenarios.map(s => {
+    const c = calculateCosts(s);
+    return {
+      name: s.name,
+      Grundstück: c.landPrice,
+      Baukosten: c.buildingCosts,
+      Nebenkosten: c.ancillaryCosts,
+      Reserve: c.contingencyAmount,
+      Gesamt: c.totalCost,
+    };
+  });
+  
+  return (
+    <div className="space-y-6">
+      {/* Scenario Tabs */}
+      <div className="flex flex-wrap items-center gap-2">
+        {scenarios.map(s => (
+          <button
+            key={s.id}
+            onClick={() => setActiveScenarioId(s.id)}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              s.id === activeScenarioId 
+                ? 'bg-blue-600 text-white' 
+                : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+            }`}
+          >
+            {s.name}
+            {scenarios.length > 1 && s.id === activeScenarioId && (
+              <button
+                onClick={(e) => { e.stopPropagation(); deleteScenario(s.id); }}
+                className="ml-2 text-slate-400 hover:text-red-400"
+              >
+                <X size={14} />
+              </button>
+            )}
+          </button>
+        ))}
+        <button
+          onClick={addScenario}
+          className="px-3 py-2 rounded-lg bg-slate-800 text-slate-400 hover:text-white hover:bg-slate-700 transition-colors"
+        >
+          <Plus size={16} />
+        </button>
+        <button
+          onClick={duplicateScenario}
+          className="px-3 py-2 rounded-lg bg-slate-800 text-slate-400 hover:text-white hover:bg-slate-700 transition-colors"
+          title="Szenario duplizieren"
+        >
+          <Copy size={16} />
+        </button>
+      </div>
+      
+      {/* Basic Settings */}
+      <Card>
+        <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+          <Building2 size={20} /> Grundeinstellungen: {activeScenario.name}
+        </h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div>
+            <label className="text-sm text-slate-400 mb-1 block">Szenario-Name</label>
+            <Input
+              value={activeScenario.name}
+              onChange={(e) => updateScenario({ name: e.target.value })}
+              className="w-full"
+            />
+          </div>
+          <div>
+            <label className="text-sm text-slate-400 mb-1 block">Grundstückspreis (€)</label>
+            <Input
+              type="number"
+              value={activeScenario.landPrice}
+              onChange={(e) => updateScenario({ landPrice: Number(e.target.value) })}
+              className="w-full"
+            />
+          </div>
+          <div>
+            <label className="text-sm text-slate-400 mb-1 block">Wohnfläche (m²)</label>
+            <Input
+              type="number"
+              value={activeScenario.buildingSize}
+              onChange={(e) => updateScenario({ buildingSize: Number(e.target.value) })}
+              className="w-full"
+            />
+          </div>
+          <div>
+            <label className="text-sm text-slate-400 mb-1 block">Reserve/Puffer (%)</label>
+            <Input
+              type="number"
+              value={activeScenario.contingency}
+              onChange={(e) => updateScenario({ contingency: Number(e.target.value) })}
+              min={0}
+              max={30}
+              className="w-full"
+            />
+          </div>
+        </div>
+        <div className="mt-4">
+          <label className="text-sm text-slate-400 mb-1 block">Grunderwerbsteuer (%)</label>
+          <div className="flex gap-2">
+            {[3.5, 5.0, 6.0, 6.5].map(rate => (
+              <button
+                key={rate}
+                onClick={() => setGrunderwerbsteuerRate(rate)}
+                className={`px-3 py-1 rounded text-sm ${
+                  grunderwerbsteuerRate === rate 
+                    ? 'bg-blue-600 text-white' 
+                    : 'bg-slate-700 text-slate-300'
+                }`}
+              >
+                {rate}%
+              </button>
+            ))}
+          </div>
+          <p className="text-xs text-slate-500 mt-1">Bayern 3.5%, Sachsen 5.5%, NRW/Schl.-H. 6.5%</p>
+        </div>
+      </Card>
+      
+      {/* Summary Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <Card className="text-center border-l-4 border-l-emerald-500">
+          <p className="text-slate-400 text-xs uppercase mb-1">Grundstück</p>
+          <p className="text-xl font-bold text-emerald-400">
+            {privacy ? '****' : `€${costs.landPrice.toLocaleString()}`}
+          </p>
+        </Card>
+        <Card className="text-center border-l-4 border-l-blue-500">
+          <p className="text-slate-400 text-xs uppercase mb-1">Baukosten</p>
+          <p className="text-xl font-bold text-blue-400">
+            {privacy ? '****' : `€${costs.buildingCosts.toLocaleString()}`}
+          </p>
+        </Card>
+        <Card className="text-center border-l-4 border-l-amber-500">
+          <p className="text-slate-400 text-xs uppercase mb-1">Nebenkosten</p>
+          <p className="text-xl font-bold text-amber-400">
+            {privacy ? '****' : `€${Math.round(costs.ancillaryCosts).toLocaleString()}`}
+          </p>
+        </Card>
+        <Card className="text-center border-l-4 border-l-purple-500">
+          <p className="text-slate-400 text-xs uppercase mb-1">Gesamtkosten</p>
+          <p className="text-xl font-bold text-purple-400">
+            {privacy ? '****' : `€${Math.round(costs.totalCost).toLocaleString()}`}
+          </p>
+          <p className="text-xs text-slate-500">{privacy ? '****' : `€${costs.pricePerSqm}/m²`}</p>
+        </Card>
+      </div>
+      
+      {/* Cost Categories */}
+      <Card>
+        <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+          <HardHat size={20} /> Baukosten nach Gewerk
+        </h3>
+        <div className="space-y-2">
+          {activeScenario.categories.map(cat => (
+            <div 
+              key={cat.id} 
+              className={`grid grid-cols-12 gap-2 items-center p-3 rounded-lg transition-colors ${
+                cat.isEnabled ? 'bg-slate-800' : 'bg-slate-800/30'
+              }`}
+            >
+              <div className="col-span-1">
+                <input
+                  type="checkbox"
+                  checked={cat.isEnabled}
+                  onChange={(e) => updateCategory(cat.id, { isEnabled: e.target.checked })}
+                  className="w-4 h-4 rounded border-slate-600 bg-slate-700 text-blue-500"
+                />
+              </div>
+              <div className="col-span-3">
+                <p className={`font-medium ${cat.isEnabled ? 'text-white' : 'text-slate-500'}`}>{cat.name}</p>
+                <p className="text-xs text-slate-500">{cat.description}</p>
+              </div>
+              <div className="col-span-2">
+                <Input
+                  type="number"
+                  value={cat.pricePerSqm}
+                  onChange={(e) => updateCategory(cat.id, { pricePerSqm: Number(e.target.value) })}
+                  disabled={!cat.isEnabled || cat.unit === '€ pauschal' || cat.unit === '€/Stellplatz'}
+                  className="w-full text-sm"
+                />
+                <p className="text-xs text-slate-500">€/{cat.unit.includes('m²') ? 'm²' : 'Einheit'}</p>
+              </div>
+              <div className="col-span-2">
+                <Input
+                  type="number"
+                  value={cat.unit === 'm² Wohnfl.' ? activeScenario.buildingSize : cat.quantity}
+                  onChange={(e) => updateCategory(cat.id, { quantity: Number(e.target.value) })}
+                  disabled={!cat.isEnabled || cat.unit === 'm² Wohnfl.'}
+                  className="w-full text-sm"
+                />
+                <p className="text-xs text-slate-500">{cat.unit}</p>
+              </div>
+              <div className="col-span-2 text-right">
+                <p className={`font-semibold ${cat.isEnabled ? 'text-blue-400' : 'text-slate-600'}`}>
+                  {privacy ? '****' : `€${(() => {
+                    if (!cat.isEnabled) return 0;
+                    if (cat.unit === '€ pauschal' || cat.unit === '€/Stellplatz') return cat.quantity;
+                    if (cat.unit === 'm² Wohnfl.') return cat.pricePerSqm * activeScenario.buildingSize;
+                    return cat.pricePerSqm * cat.quantity;
+                  })().toLocaleString()}`}
+                </p>
+              </div>
+              <div className="col-span-2">
+                <div className="h-2 bg-slate-700 rounded-full overflow-hidden">
+                  <div 
+                    className="h-full bg-blue-500 rounded-full transition-all"
+                    style={{ 
+                      width: `${Math.min(100, ((() => {
+                        if (!cat.isEnabled) return 0;
+                        if (cat.unit === '€ pauschal' || cat.unit === '€/Stellplatz') return cat.quantity;
+                        if (cat.unit === 'm² Wohnfl.') return cat.pricePerSqm * activeScenario.buildingSize;
+                        return cat.pricePerSqm * cat.quantity;
+                      })() / costs.buildingCosts) * 100)}%` 
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </Card>
+      
+      {/* Ancillary Costs Breakdown */}
+      <Card>
+        <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+          <Calculator size={20} /> Nebenkosten Aufschlüsselung
+        </h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {costs.ancillaryBreakdown.map(item => (
+            <div key={item.name} className="flex justify-between items-center p-2 bg-slate-800/50 rounded">
+              <span className="text-slate-300">{item.name}</span>
+              <span className="text-amber-400 font-medium">
+                {privacy ? '****' : `€${Math.round(item.cost).toLocaleString()}`}
+              </span>
+            </div>
+          ))}
+          <div className="md:col-span-2 flex justify-between items-center p-3 bg-slate-700 rounded font-semibold">
+            <span className="text-white">+ Reserve ({activeScenario.contingency}%)</span>
+            <span className="text-purple-400">
+              {privacy ? '****' : `€${Math.round(costs.contingencyAmount).toLocaleString()}`}
+            </span>
+          </div>
+        </div>
+      </Card>
+      
+      {/* Scenario Comparison */}
+      {scenarios.length > 1 && (
+        <Card>
+          <h3 className="text-lg font-semibold text-white mb-4">Szenario-Vergleich</h3>
+          <div className="h-80">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={comparisonData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+                <XAxis dataKey="name" stroke="#94a3b8" />
+                <YAxis stroke="#94a3b8" tickFormatter={(v) => `€${(v / 1000).toFixed(0)}k`} />
+                <RechartsTooltip
+                  contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #475569', borderRadius: '8px' }}
+                  formatter={(value: number) => `€${value.toLocaleString()}`}
+                />
+                <Legend />
+                <Bar dataKey="Grundstück" stackId="a" fill="#10b981" />
+                <Bar dataKey="Baukosten" stackId="a" fill="#3b82f6" />
+                <Bar dataKey="Nebenkosten" stackId="a" fill="#f59e0b" />
+                <Bar dataKey="Reserve" stackId="a" fill="#8b5cf6" />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+          
+          {/* Comparison Table */}
+          <div className="mt-4 overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-slate-400 border-b border-slate-700">
+                  <th className="text-left py-2 px-2">Szenario</th>
+                  <th className="text-right py-2 px-2">Grundstück</th>
+                  <th className="text-right py-2 px-2">Baukosten</th>
+                  <th className="text-right py-2 px-2">Nebenkosten</th>
+                  <th className="text-right py-2 px-2">Reserve</th>
+                  <th className="text-right py-2 px-2 font-semibold">Gesamt</th>
+                  <th className="text-right py-2 px-2">€/m²</th>
+                </tr>
+              </thead>
+              <tbody>
+                {scenarios.map(s => {
+                  const c = calculateCosts(s);
+                  return (
+                    <tr key={s.id} className={`border-b border-slate-800 ${s.id === activeScenarioId ? 'bg-slate-800/50' : ''}`}>
+                      <td className="py-2 px-2 text-white font-medium">{s.name}</td>
+                      <td className="py-2 px-2 text-right text-emerald-400">
+                        {privacy ? '****' : `€${c.landPrice.toLocaleString()}`}
+                      </td>
+                      <td className="py-2 px-2 text-right text-blue-400">
+                        {privacy ? '****' : `€${c.buildingCosts.toLocaleString()}`}
+                      </td>
+                      <td className="py-2 px-2 text-right text-amber-400">
+                        {privacy ? '****' : `€${Math.round(c.ancillaryCosts).toLocaleString()}`}
+                      </td>
+                      <td className="py-2 px-2 text-right text-purple-400">
+                        {privacy ? '****' : `€${Math.round(c.contingencyAmount).toLocaleString()}`}
+                      </td>
+                      <td className="py-2 px-2 text-right text-white font-semibold">
+                        {privacy ? '****' : `€${Math.round(c.totalCost).toLocaleString()}`}
+                      </td>
+                      <td className="py-2 px-2 text-right text-slate-400">
+                        {privacy ? '****' : `€${c.pricePerSqm}`}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
+      
+      {/* Info Box */}
+      <Card className="bg-slate-800/50 border border-slate-700">
+        <h4 className="text-sm font-semibold text-white mb-2">Hinweise zur Kalkulation</h4>
+        <ul className="text-xs text-slate-400 space-y-1">
+          <li>• Die Preise sind Richtwerte für Deutschland (2024) und variieren stark nach Region</li>
+          <li>• Massivbau ist meist teurer als Fertighaus, bietet aber mehr Flexibilität</li>
+          <li>• Keller vs. Bodenplatte: ~€400-500/m² Unterschied, aber mehr Nutzfläche</li>
+          <li>• Architektenhonorar nach HOAI: 10-15% der Baukosten (alle Leistungsphasen)</li>
+          <li>• Reserve von 10-15% ist empfohlen für unvorhergesehene Kosten</li>
+        </ul>
       </Card>
     </div>
   );

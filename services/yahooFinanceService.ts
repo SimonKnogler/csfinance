@@ -821,57 +821,71 @@ export const fetchStockMetadata = async (symbol: string): Promise<StockMetadata>
   return metadata;
 };
 
-export const fetchMarketNews = async (): Promise<NewsItem[]> => {
-  return [
-    {
-      id: '1',
-      title: 'NVIDIA Surges past estimates as AI demand skyrockets',
-      source: 'Bloomberg',
-      time: '2h ago',
-      relatedTickers: ['NVDA'],
-      sentiment: 'POSITIVE',
-      imageUrl: 'https://images.unsplash.com/photo-1620712943543-bcc4688e7485?w=400&q=80',
-      url: 'https://www.bloomberg.com/quote/NVDA:US'
-    },
-    {
-      id: '2',
-      title: 'Bitcoin holds steady above €60k amid regulatory talks',
-      source: 'CoinDesk',
-      time: '4h ago',
-      relatedTickers: ['BTC-USD'],
-      sentiment: 'NEUTRAL',
-      imageUrl: 'https://images.unsplash.com/photo-1518546305927-5a555bb7020d?w=400&q=80',
-      url: 'https://www.coindesk.com/price/bitcoin/'
-    },
-    {
-      id: '3',
-      title: 'Tesla announces new Gigafactory plans in Southeast Asia',
-      source: 'Reuters',
-      time: '6h ago',
-      relatedTickers: ['TSLA'],
-      sentiment: 'POSITIVE',
-      imageUrl: 'https://images.unsplash.com/photo-1617788138017-80ad40651399?w=400&q=80',
-      url: 'https://www.reuters.com/business/autos-transportation/tesla-china-made-ev-sales-rise-153-yoy-august-2024-09-02/'
-    },
-    {
-      id: '4',
-      title: 'Market Analysis: Why tech stocks might face headwinds in Q4',
-      source: 'Wall Street Journal',
-      time: '10h ago',
-      relatedTickers: ['AAPL', 'MSFT', 'GOOGL'],
-      sentiment: 'NEGATIVE',
-      imageUrl: 'https://images.unsplash.com/photo-1590283603385-17ffb3a7f29f?w=400&q=80',
-      url: 'https://www.wsj.com/finance/stocks'
-    },
-    {
-      id: '5',
-      title: 'ECB hints at potential rate cuts later this year',
-      source: 'CNBC',
-      time: '12h ago',
-      relatedTickers: ['VOO', 'VTI'],
-      sentiment: 'POSITIVE',
-      imageUrl: 'https://images.unsplash.com/photo-1611974765270-ca12586343bb?w=400&q=80',
-      url: 'https://www.cnbc.com/world/?region=europe'
+// News cache to avoid excessive API calls
+let newsCache: { data: NewsItem[]; timestamp: number } | null = null;
+const NEWS_CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes
+
+// Fallback news if API fails
+const FALLBACK_NEWS: NewsItem[] = [
+  {
+    id: 'fallback-1',
+    title: 'Unable to load latest news - please refresh',
+    source: 'System',
+    time: 'Just now',
+    relatedTickers: [],
+    sentiment: 'NEUTRAL',
+    url: '#'
+  }
+];
+
+export const fetchMarketNews = async (symbols?: string[]): Promise<NewsItem[]> => {
+  // Check cache first
+  if (newsCache && Date.now() - newsCache.timestamp < NEWS_CACHE_TTL_MS) {
+    return newsCache.data;
+  }
+  
+  try {
+    const symbolParam = symbols && symbols.length > 0 
+      ? `?symbols=${encodeURIComponent(symbols.slice(0, 5).join(','))}`
+      : '';
+    
+    const response = await fetch(`/api/stock-news${symbolParam}`);
+    
+    if (!response.ok) {
+      console.warn('News API returned error:', response.status);
+      return newsCache?.data || FALLBACK_NEWS;
     }
-  ];
+    
+    const data = await response.json();
+    const newsItems: NewsItem[] = (data.news || []).map((item: {
+      id: string;
+      title: string;
+      source: string;
+      time: string;
+      url: string;
+      imageUrl?: string;
+      relatedTickers?: string[];
+      sentiment?: 'POSITIVE' | 'NEGATIVE' | 'NEUTRAL';
+    }) => ({
+      id: item.id,
+      title: item.title,
+      source: item.source,
+      time: item.time,
+      url: item.url,
+      imageUrl: item.imageUrl,
+      relatedTickers: item.relatedTickers || [],
+      sentiment: item.sentiment || 'NEUTRAL',
+    }));
+    
+    // Update cache
+    newsCache = {
+      data: newsItems.length > 0 ? newsItems : FALLBACK_NEWS,
+      timestamp: Date.now(),
+    };
+    
+    return newsCache.data;
+  } catch (error) {
+    console.error('Failed to fetch market news:', error);
+    return newsCache?.data || FALLBACK_NEWS;
+  }
 };

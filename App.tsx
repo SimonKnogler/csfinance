@@ -28,6 +28,7 @@ import { Card, Button, Input, Select, Badge, Money } from './components/UICompon
 import { AIInsights } from './components/AIInsights';
 import { Portfolio } from './components/Portfolio';
 import { RealEstate } from './components/RealEstate';
+import { RentalTaxCalculator } from './components/RentalTaxCalculator';
 import { Documents } from './components/Documents';
 import { Auth } from './components/Auth';
 import { Settings } from './components/Settings';
@@ -367,6 +368,9 @@ const AuthenticatedApp: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
                <Card title="Recent Income">
                  <TransactionTable transactions={transactions.filter(t => t.type === TransactionType.INCOME)} privacy={isPrivacyMode} />
                </Card>
+
+               {/* Rental Income Tax Calculator */}
+               <RentalTaxCalculator privacy={isPrivacyMode} />
             </div>
           )}
 
