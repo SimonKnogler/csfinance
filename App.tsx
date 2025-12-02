@@ -40,7 +40,7 @@ import { StorageService } from './services/storageService';
 const BUDGET_CATEGORIES = [
   'Gehalt', 'Freelance', 'Dividenden', 'Mieteinnahmen', 'Sonstiges Einkommen',
   'Miete', 'Strom/Gas', 'Internet', 'Versicherungen', 'Lebensmittel', 
-  'Transport', 'Abos', 'Freizeit', 'Kleidung', 'Gesundheit', 'Sonstiges'
+  'Transport', 'Abos', 'Sport', 'Freizeit', 'Kleidung', 'Gesundheit', 'Sonstiges'
 ];
 
 // Color mapping for income categories
@@ -61,6 +61,7 @@ const EXPENSE_CATEGORY_COLORS: Record<string, string> = {
   'Lebensmittel': 'bg-green-500/20 text-green-300 border-green-500/30',
   'Transport': 'bg-orange-500/20 text-orange-300 border-orange-500/30',
   'Abos': 'bg-pink-500/20 text-pink-300 border-pink-500/30',
+  'Sport': 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
   'Freizeit': 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30',
   'Kleidung': 'bg-fuchsia-500/20 text-fuchsia-300 border-fuchsia-500/30',
   'Gesundheit': 'bg-red-500/20 text-red-300 border-red-500/30',
