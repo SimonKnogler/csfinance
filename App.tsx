@@ -32,6 +32,7 @@ import { RealEstate } from './components/RealEstate';
 import { RentalTaxCalculator } from './components/RentalTaxCalculator';
 import { NetWorthDashboard } from './components/NetWorthDashboard';
 import { Documents } from './components/Documents';
+import { ChatWidget } from './components/ChatWidget';
 import { Auth } from './components/Auth';
 import { Settings } from './components/Settings';
 import { StorageService } from './services/storageService';
@@ -667,6 +668,9 @@ const AuthenticatedApp: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
           type={entryType}
         />
       )}
+
+      {/* AI CHAT WIDGET */}
+      <ChatWidget />
     </div>
   );
 };

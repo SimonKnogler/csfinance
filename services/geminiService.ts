@@ -78,3 +78,63 @@ export const generateFinancialInsights = async (transactions: Transaction[]) => 
     return null;
   }
 };
+
+// --- AI CHAT FOR INVESTMENT QUESTIONS ---
+
+export interface ChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+const FINANCE_SYSTEM_PROMPT = `Du bist ein freundlicher und kompetenter Finanzberater-Assistent in einer persönlichen Finanz-App. 
+
+Deine Aufgaben:
+- Beantworte Fragen zu Investitionen, ETFs, Aktien, Kryptowährungen und Vermögensaufbau
+- Erkläre Finanzkonzepte einfach und verständlich
+- Gib praktische Tipps zur Geldanlage und Budgetierung
+- Antworte auf Deutsch, es sei denn der Benutzer schreibt auf Englisch
+
+Wichtige Hinweise:
+- Weise darauf hin, dass du keine professionelle Finanzberatung ersetzt
+- Sei vorsichtig mit konkreten Anlageempfehlungen
+- Halte Antworten prägnant aber informativ (max. 2-3 Absätze)
+- Nutze Aufzählungen für bessere Lesbarkeit wenn sinnvoll`;
+
+export const chatWithAI = async (
+  userMessage: string, 
+  conversationHistory: ChatMessage[] = []
+): Promise<string> => {
+  if (!ai) {
+    return "⚠️ Gemini API nicht konfiguriert. Bitte NEXT_PUBLIC_GEMINI_API_KEY in den Umgebungsvariablen setzen.";
+  }
+
+  try {
+    const model = ai.getGenerativeModel({ 
+      model: 'gemini-1.5-flash',
+      systemInstruction: FINANCE_SYSTEM_PROMPT,
+    });
+
+    // Build conversation context
+    const historyFormatted = conversationHistory.map(msg => ({
+      role: msg.role === 'user' ? 'user' : 'model',
+      parts: [{ text: msg.content }]
+    }));
+
+    const chat = model.startChat({
+      history: historyFormatted as any,
+    });
+
+    const result = await chat.sendMessage(userMessage);
+    const response = await result.response;
+    const text = response.text();
+
+    return text || "Entschuldigung, ich konnte keine Antwort generieren.";
+  } catch (error) {
+    console.error("Gemini Chat Error:", error);
+    return "❌ Fehler bei der Verbindung zum AI-Service. Bitte versuche es später erneut.";
+  }
+};
+
+export const isGeminiConfigured = (): boolean => {
+  return !!ai;
+};
