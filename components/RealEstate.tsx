@@ -12,8 +12,15 @@ import {
   PiggyBank,
   Calculator,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  SlidersHorizontal,
+  LayoutGrid
 } from 'lucide-react';
+
+enum SubView {
+  OVERVIEW = 'Übersicht',
+  SIMULATOR = 'Simulator',
+}
 import { 
   ResponsiveContainer, 
   AreaChart, 
@@ -38,6 +45,7 @@ interface RealEstateProps {
 }
 
 export const RealEstate: React.FC<RealEstateProps> = ({ privacy }) => {
+  const [subView, setSubView] = useState<SubView>(SubView.OVERVIEW);
   const [properties, setProperties] = useState<RealEstateProperty[]>([]);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingProperty, setEditingProperty] = useState<RealEstateProperty | null>(null);
@@ -170,99 +178,132 @@ export const RealEstate: React.FC<RealEstateProps> = ({ privacy }) => {
             <p className="text-slate-400 text-sm">{properties.length} {properties.length === 1 ? 'Immobilie' : 'Immobilien'}</p>
           </div>
         </div>
-        <Button onClick={() => setIsAddModalOpen(true)}>
-          <Plus size={18} /> Immobilie hinzufügen
-        </Button>
-      </div>
-
-      {/* Summary Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-        <Card className="text-center">
-          <p className="text-slate-400 text-xs uppercase tracking-wide mb-1">Gesamtwert</p>
-          <p className="text-xl font-bold text-white"><Money value={totals.totalValue} privacy={privacy} fractionDigits={0} /></p>
-        </Card>
-        <Card className="text-center">
-          <p className="text-slate-400 text-xs uppercase tracking-wide mb-1">Schulden</p>
-          <p className="text-xl font-bold text-red-400"><Money value={totals.totalDebt} privacy={privacy} fractionDigits={0} /></p>
-        </Card>
-        <Card className="text-center">
-          <p className="text-slate-400 text-xs uppercase tracking-wide mb-1">Eigenkapital</p>
-          <p className="text-xl font-bold text-emerald-400"><Money value={totals.totalEquity} privacy={privacy} fractionDigits={0} /></p>
-        </Card>
-        <Card className="text-center">
-          <p className="text-slate-400 text-xs uppercase tracking-wide mb-1">Mieteinnahmen</p>
-          <p className="text-xl font-bold text-white"><Money value={totals.monthlyIncome} privacy={privacy} fractionDigits={0} />/Mo</p>
-        </Card>
-        <Card className="text-center">
-          <p className="text-slate-400 text-xs uppercase tracking-wide mb-1">Ausgaben</p>
-          <p className="text-xl font-bold text-orange-400"><Money value={totals.monthlyExpenses} privacy={privacy} fractionDigits={0} />/Mo</p>
-        </Card>
-        <Card className="text-center">
-          <p className="text-slate-400 text-xs uppercase tracking-wide mb-1">Cashflow</p>
-          <p className={`text-xl font-bold ${totals.monthlyCashflow >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-            <Money value={totals.monthlyCashflow} privacy={privacy} fractionDigits={0} sign />/Mo
-          </p>
-        </Card>
-      </div>
-
-      {/* Properties List */}
-      {properties.length === 0 ? (
-        <Card className="text-center py-12">
-          <Home size={48} className="mx-auto text-slate-600 mb-4" />
-          <h3 className="text-xl font-bold text-white mb-2">Keine Immobilien</h3>
-          <p className="text-slate-400 mb-4">Füge deine erste Immobilie hinzu, um zu starten.</p>
-          <Button onClick={() => setIsAddModalOpen(true)}>
-            <Plus size={18} /> Immobilie hinzufügen
-          </Button>
-        </Card>
-      ) : (
-        <div className="space-y-4">
-          {properties.map(property => (
-            <PropertyCard 
-              key={property.id}
-              property={property}
-              privacy={privacy}
-              isExpanded={expandedProperty === property.id}
-              onToggle={() => setExpandedProperty(expandedProperty === property.id ? null : property.id)}
-              onEdit={() => setEditingProperty(property)}
-              onDelete={() => handleDeleteProperty(property.id)}
-            />
-          ))}
+        <div className="flex items-center gap-3">
+          {/* SubView Toggle */}
+          <div className="flex bg-darker p-1 rounded-lg border border-slate-700">
+            <button
+              onClick={() => setSubView(SubView.OVERVIEW)}
+              className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                subView === SubView.OVERVIEW ? 'bg-slate-600 text-white' : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <LayoutGrid size={16} /> Übersicht
+            </button>
+            <button
+              onClick={() => setSubView(SubView.SIMULATOR)}
+              className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                subView === SubView.SIMULATOR ? 'bg-amber-600 text-white' : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <SlidersHorizontal size={16} /> Simulator
+            </button>
+          </div>
+          {subView === SubView.OVERVIEW && (
+            <Button onClick={() => setIsAddModalOpen(true)}>
+              <Plus size={18} /> Immobilie hinzufügen
+            </Button>
+          )}
         </div>
+      </div>
+
+      {/* OVERVIEW VIEW */}
+      {subView === SubView.OVERVIEW && (
+        <>
+          {/* Summary Cards */}
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+            <Card className="text-center">
+              <p className="text-slate-400 text-xs uppercase tracking-wide mb-1">Gesamtwert</p>
+              <p className="text-xl font-bold text-white"><Money value={totals.totalValue} privacy={privacy} fractionDigits={0} /></p>
+            </Card>
+            <Card className="text-center">
+              <p className="text-slate-400 text-xs uppercase tracking-wide mb-1">Schulden</p>
+              <p className="text-xl font-bold text-red-400"><Money value={totals.totalDebt} privacy={privacy} fractionDigits={0} /></p>
+            </Card>
+            <Card className="text-center">
+              <p className="text-slate-400 text-xs uppercase tracking-wide mb-1">Eigenkapital</p>
+              <p className="text-xl font-bold text-emerald-400"><Money value={totals.totalEquity} privacy={privacy} fractionDigits={0} /></p>
+            </Card>
+            <Card className="text-center">
+              <p className="text-slate-400 text-xs uppercase tracking-wide mb-1">Mieteinnahmen</p>
+              <p className="text-xl font-bold text-white"><Money value={totals.monthlyIncome} privacy={privacy} fractionDigits={0} />/Mo</p>
+            </Card>
+            <Card className="text-center">
+              <p className="text-slate-400 text-xs uppercase tracking-wide mb-1">Ausgaben</p>
+              <p className="text-xl font-bold text-orange-400"><Money value={totals.monthlyExpenses} privacy={privacy} fractionDigits={0} />/Mo</p>
+            </Card>
+            <Card className="text-center">
+              <p className="text-slate-400 text-xs uppercase tracking-wide mb-1">Cashflow</p>
+              <p className={`text-xl font-bold ${totals.monthlyCashflow >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                <Money value={totals.monthlyCashflow} privacy={privacy} fractionDigits={0} sign />/Mo
+              </p>
+            </Card>
+          </div>
+
+          {/* Properties List */}
+          {properties.length === 0 ? (
+            <Card className="text-center py-12">
+              <Home size={48} className="mx-auto text-slate-600 mb-4" />
+              <h3 className="text-xl font-bold text-white mb-2">Keine Immobilien</h3>
+              <p className="text-slate-400 mb-4">Füge deine erste Immobilie hinzu, um zu starten.</p>
+              <Button onClick={() => setIsAddModalOpen(true)}>
+                <Plus size={18} /> Immobilie hinzufügen
+              </Button>
+            </Card>
+          ) : (
+            <div className="space-y-4">
+              {properties.map(property => (
+                <PropertyCard 
+                  key={property.id}
+                  property={property}
+                  privacy={privacy}
+                  isExpanded={expandedProperty === property.id}
+                  onToggle={() => setExpandedProperty(expandedProperty === property.id ? null : property.id)}
+                  onEdit={() => setEditingProperty(property)}
+                  onDelete={() => handleDeleteProperty(property.id)}
+                />
+              ))}
+            </div>
+          )}
+
+          {/* Projection Chart */}
+          {properties.length > 0 && (
+            <Card>
+              <h3 className="text-lg font-bold text-white mb-4">Vermögensentwicklung (15 Jahre)</h3>
+              <div className="h-80">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={projectionData} margin={{ top: 20, right: 20, left: 20, bottom: 20 }}>
+                    <defs>
+                      <linearGradient id="colorEquity" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#10b981" stopOpacity={0.4}/>
+                        <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                      </linearGradient>
+                      <linearGradient id="colorDebt" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#ef4444" stopOpacity={0.4}/>
+                        <stop offset="95%" stopColor="#ef4444" stopOpacity={0}/>
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
+                    <XAxis dataKey="year" stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} />
+                    <YAxis stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(val) => privacy ? '' : `€${val/1000}k`} />
+                    <RechartsTooltip 
+                      contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px' }} 
+                      formatter={(val: number) => [privacy ? '****' : `€${val.toLocaleString()}`]}
+                      labelFormatter={(label) => `Jahr ${label}`}
+                    />
+                    <Legend />
+                    <Area type="monotone" name="Eigenkapital" dataKey="equity" stroke="#10b981" fill="url(#colorEquity)" strokeWidth={2} />
+                    <Area type="monotone" name="Schulden" dataKey="debt" stroke="#ef4444" fill="url(#colorDebt)" strokeWidth={2} />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            </Card>
+          )}
+        </>
       )}
 
-      {/* Projection Chart */}
-      {properties.length > 0 && (
-        <Card>
-          <h3 className="text-lg font-bold text-white mb-4">Vermögensentwicklung (15 Jahre)</h3>
-          <div className="h-80">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={projectionData} margin={{ top: 20, right: 20, left: 20, bottom: 20 }}>
-                <defs>
-                  <linearGradient id="colorEquity" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.4}/>
-                    <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
-                  </linearGradient>
-                  <linearGradient id="colorDebt" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#ef4444" stopOpacity={0.4}/>
-                    <stop offset="95%" stopColor="#ef4444" stopOpacity={0}/>
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
-                <XAxis dataKey="year" stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} />
-                <YAxis stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(val) => privacy ? '' : `€${val/1000}k`} />
-                <RechartsTooltip 
-                  contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px' }} 
-                  formatter={(val: number) => [privacy ? '****' : `€${val.toLocaleString()}`]}
-                  labelFormatter={(label) => `Jahr ${label}`}
-                />
-                <Legend />
-                <Area type="monotone" name="Eigenkapital" dataKey="equity" stroke="#10b981" fill="url(#colorEquity)" strokeWidth={2} />
-                <Area type="monotone" name="Schulden" dataKey="debt" stroke="#ef4444" fill="url(#colorDebt)" strokeWidth={2} />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-        </Card>
+      {/* SIMULATOR VIEW */}
+      {subView === SubView.SIMULATOR && (
+        <PropertySimulator properties={properties} privacy={privacy} />
       )}
 
       {/* Add/Edit Modal */}
@@ -868,6 +909,515 @@ const PropertyModal: React.FC<{
             </Button>
           </div>
         </form>
+      </Card>
+    </div>
+  );
+};
+
+// --- Property Simulator Component ---
+const PropertySimulator: React.FC<{
+  properties: RealEstateProperty[];
+  privacy: boolean;
+}> = ({ properties, privacy }) => {
+  // Selected property
+  const [selectedPropertyId, setSelectedPropertyId] = useState<string>(properties[0]?.id || '');
+  const selectedProperty = properties.find(p => p.id === selectedPropertyId);
+
+  // Simulation adjustments (deltas from current values)
+  const [interestRateAdjust, setInterestRateAdjust] = useState(0); // ±% points
+  const [valueAdjust, setValueAdjust] = useState(0); // ±% of current value
+  const [rentAdjust, setRentAdjust] = useState(0); // ±% of current rent
+  const [extraRepayment, setExtraRepayment] = useState(0); // €/year additional
+  const [expenseAdjust, setExpenseAdjust] = useState(0); // ±% of expenses
+  const [vacancyMonths, setVacancyMonths] = useState(0); // months/year
+
+  // Reset simulation when property changes
+  useEffect(() => {
+    setInterestRateAdjust(0);
+    setValueAdjust(0);
+    setRentAdjust(0);
+    setExtraRepayment(0);
+    setExpenseAdjust(0);
+    setVacancyMonths(0);
+  }, [selectedPropertyId]);
+
+  // Calculate simulated values
+  const simulation = useMemo(() => {
+    if (!selectedProperty) return null;
+
+    const p = selectedProperty;
+    
+    // Current values
+    const currentInterestRate = p.interestRate;
+    const currentValue = p.currentValue;
+    const currentRent = p.monthlyRent;
+    const currentExpenses = p.monthlyTaxes + p.monthlyInsurance + p.monthlyMaintenance + p.monthlyHOA;
+    const currentSpecialRepayment = p.specialRepayment;
+    
+    // Simulated values
+    const simInterestRate = Math.max(0, currentInterestRate + interestRateAdjust);
+    const simValue = currentValue * (1 + valueAdjust / 100);
+    const simRent = currentRent * (1 + rentAdjust / 100);
+    const simExpenses = currentExpenses * (1 + expenseAdjust / 100);
+    const simSpecialRepayment = currentSpecialRepayment + extraRepayment;
+    
+    // Calculate new mortgage payment with new interest rate
+    const loanAmount = p.loanAmount;
+    const monthlyRate = simInterestRate / 100 / 12;
+    const numPayments = p.loanTermYears * 12;
+    
+    let simMonthlyPayment = p.monthlyPayment;
+    let simMonthlyInterest = p.monthlyInterest;
+    let simMonthlyPrincipal = p.monthlyPrincipal;
+    
+    if (monthlyRate > 0 && loanAmount > 0) {
+      simMonthlyPayment = loanAmount * (monthlyRate * Math.pow(1 + monthlyRate, numPayments)) / 
+                          (Math.pow(1 + monthlyRate, numPayments) - 1);
+      simMonthlyInterest = loanAmount * monthlyRate;
+      simMonthlyPrincipal = simMonthlyPayment - simMonthlyInterest;
+    }
+    
+    // Effective rent with vacancy
+    const effectiveRent = simRent * (12 - vacancyMonths) / 12;
+    
+    // Cashflow calculations
+    const currentTotalExpenses = p.monthlyPayment + currentExpenses;
+    const currentEffectiveRent = p.isRented ? currentRent : 0;
+    const currentCashflow = currentEffectiveRent - currentTotalExpenses;
+    
+    const simTotalExpenses = simMonthlyPayment + simExpenses;
+    const simEffectiveRent = p.isRented ? effectiveRent : 0;
+    const simCashflow = simEffectiveRent - simTotalExpenses;
+    
+    // Equity
+    const currentEquity = currentValue - loanAmount;
+    const simEquity = simValue - loanAmount;
+    
+    // Break-even rent (rent needed for cashflow = 0)
+    const breakEvenRent = simTotalExpenses;
+    
+    // ROI on equity
+    const currentROI = currentEquity > 0 ? (currentCashflow * 12 / currentEquity) * 100 : 0;
+    const simROI = simEquity > 0 ? (simCashflow * 12 / simEquity) * 100 : 0;
+    
+    // Years to pay off loan
+    const yearlyPrincipal = (simMonthlyPrincipal * 12) + simSpecialRepayment;
+    const yearsToPayoff = yearlyPrincipal > 0 ? Math.ceil(loanAmount / yearlyPrincipal) : Infinity;
+    const currentYearlyPrincipal = (p.monthlyPrincipal * 12) + p.specialRepayment;
+    const currentYearsToPayoff = currentYearlyPrincipal > 0 ? Math.ceil(loanAmount / currentYearlyPrincipal) : Infinity;
+
+    return {
+      current: {
+        interestRate: currentInterestRate,
+        value: currentValue,
+        rent: currentRent,
+        expenses: currentExpenses,
+        monthlyPayment: p.monthlyPayment,
+        monthlyInterest: p.monthlyInterest,
+        monthlyPrincipal: p.monthlyPrincipal,
+        totalExpenses: currentTotalExpenses,
+        effectiveRent: currentEffectiveRent,
+        cashflow: currentCashflow,
+        equity: currentEquity,
+        roi: currentROI,
+        yearsToPayoff: currentYearsToPayoff,
+        specialRepayment: currentSpecialRepayment,
+      },
+      simulated: {
+        interestRate: simInterestRate,
+        value: simValue,
+        rent: simRent,
+        expenses: simExpenses,
+        monthlyPayment: simMonthlyPayment,
+        monthlyInterest: simMonthlyInterest,
+        monthlyPrincipal: simMonthlyPrincipal,
+        totalExpenses: simTotalExpenses,
+        effectiveRent: simEffectiveRent,
+        cashflow: simCashflow,
+        equity: simEquity,
+        roi: simROI,
+        yearsToPayoff: yearsToPayoff,
+        breakEvenRent: breakEvenRent,
+        specialRepayment: simSpecialRepayment,
+      },
+      deltas: {
+        monthlyPayment: simMonthlyPayment - p.monthlyPayment,
+        cashflow: simCashflow - currentCashflow,
+        equity: simEquity - currentEquity,
+        roi: simROI - currentROI,
+        yearsToPayoff: yearsToPayoff - currentYearsToPayoff,
+      }
+    };
+  }, [selectedProperty, interestRateAdjust, valueAdjust, rentAdjust, extraRepayment, expenseAdjust, vacancyMonths]);
+
+  // Projection data for chart
+  const projectionData = useMemo(() => {
+    if (!selectedProperty || !simulation) return [];
+    
+    const p = selectedProperty;
+    const data = [];
+    
+    let currentDebt = p.loanAmount;
+    let simDebt = p.loanAmount;
+    
+    const currentYearlyPrincipal = (p.monthlyPrincipal * 12) + p.specialRepayment;
+    const simYearlyPrincipal = (simulation.simulated.monthlyPrincipal * 12) + simulation.simulated.specialRepayment;
+    const appreciation = valueAdjust >= 0 ? 0.02 : -0.01; // Less appreciation if value decreasing
+    
+    for (let year = 0; year <= 20; year++) {
+      const currentValue = p.currentValue * Math.pow(1.02, year); // 2% appreciation
+      const simValue = simulation.simulated.value * Math.pow(1 + appreciation, year);
+      
+      data.push({
+        year: new Date().getFullYear() + year,
+        currentEquity: Math.round(currentValue - Math.max(0, currentDebt)),
+        simEquity: Math.round(simValue - Math.max(0, simDebt)),
+        currentDebt: Math.round(Math.max(0, currentDebt)),
+        simDebt: Math.round(Math.max(0, simDebt)),
+      });
+      
+      currentDebt = Math.max(0, currentDebt - currentYearlyPrincipal);
+      simDebt = Math.max(0, simDebt - simYearlyPrincipal);
+    }
+    
+    return data;
+  }, [selectedProperty, simulation, valueAdjust]);
+
+  if (properties.length === 0) {
+    return (
+      <Card className="text-center py-12">
+        <SlidersHorizontal size={48} className="mx-auto text-slate-600 mb-4" />
+        <h3 className="text-xl font-bold text-white mb-2">Keine Immobilien zum Simulieren</h3>
+        <p className="text-slate-400">Füge zuerst eine Immobilie in der Übersicht hinzu.</p>
+      </Card>
+    );
+  }
+
+  if (!simulation) return null;
+
+  const DeltaDisplay: React.FC<{ value: number; suffix?: string; inverted?: boolean }> = ({ value, suffix = '', inverted = false }) => {
+    const isPositive = inverted ? value < 0 : value > 0;
+    const isNegative = inverted ? value > 0 : value < 0;
+    if (Math.abs(value) < 0.01) return null;
+    return (
+      <span className={`text-xs ml-2 ${isPositive ? 'text-emerald-400' : isNegative ? 'text-red-400' : 'text-slate-400'}`}>
+        {value > 0 ? '+' : ''}{value.toFixed(suffix === '%' ? 1 : 0)}{suffix}
+      </span>
+    );
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Property Selector */}
+      <Card>
+        <div className="flex items-center gap-4">
+          <label className="text-slate-400 text-sm font-medium">Immobilie auswählen:</label>
+          <select
+            value={selectedPropertyId}
+            onChange={(e) => setSelectedPropertyId(e.target.value)}
+            className="flex-1 bg-darker border border-slate-700 rounded-lg px-4 py-2 text-white focus:ring-2 focus:ring-amber-500 focus:border-transparent outline-none"
+            style={{ backgroundColor: '#0f172a' }}
+          >
+            {properties.map(p => (
+              <option key={p.id} value={p.id}>{p.name} - {p.address}</option>
+            ))}
+          </select>
+        </div>
+      </Card>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Sliders */}
+        <Card>
+          <h3 className="text-lg font-bold text-white mb-6 flex items-center gap-2">
+            <SlidersHorizontal size={20} className="text-amber-400" /> Stellschrauben
+          </h3>
+          
+          <div className="space-y-6">
+            {/* Interest Rate */}
+            <div>
+              <div className="flex justify-between mb-2">
+                <label className="text-sm text-slate-400">Zinssatz-Änderung</label>
+                <span className="font-bold text-white">
+                  {simulation.simulated.interestRate.toFixed(2)}%
+                  <DeltaDisplay value={interestRateAdjust} suffix="%" inverted />
+                </span>
+              </div>
+              <input
+                type="range"
+                min="-3"
+                max="5"
+                step="0.25"
+                value={interestRateAdjust}
+                onChange={(e) => setInterestRateAdjust(Number(e.target.value))}
+                className="w-full accent-amber-500 h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer"
+              />
+              <div className="flex justify-between text-[10px] text-slate-500 mt-1">
+                <span>-3%</span>
+                <span>Aktuell</span>
+                <span>+5%</span>
+              </div>
+            </div>
+
+            {/* Property Value */}
+            <div>
+              <div className="flex justify-between mb-2">
+                <label className="text-sm text-slate-400">Immobilienwert</label>
+                <span className="font-bold text-white">
+                  <Money value={simulation.simulated.value} privacy={privacy} fractionDigits={0} />
+                  <DeltaDisplay value={valueAdjust} suffix="%" />
+                </span>
+              </div>
+              <input
+                type="range"
+                min="-30"
+                max="50"
+                step="5"
+                value={valueAdjust}
+                onChange={(e) => setValueAdjust(Number(e.target.value))}
+                className="w-full accent-amber-500 h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer"
+              />
+              <div className="flex justify-between text-[10px] text-slate-500 mt-1">
+                <span>-30%</span>
+                <span>Aktuell</span>
+                <span>+50%</span>
+              </div>
+            </div>
+
+            {/* Monthly Rent */}
+            {selectedProperty?.isRented && (
+              <div>
+                <div className="flex justify-between mb-2">
+                  <label className="text-sm text-slate-400">Monatsmiete</label>
+                  <span className="font-bold text-white">
+                    <Money value={simulation.simulated.rent} privacy={privacy} fractionDigits={0} />
+                    <DeltaDisplay value={rentAdjust} suffix="%" />
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min="-50"
+                  max="50"
+                  step="5"
+                  value={rentAdjust}
+                  onChange={(e) => setRentAdjust(Number(e.target.value))}
+                  className="w-full accent-amber-500 h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer"
+                />
+                <div className="flex justify-between text-[10px] text-slate-500 mt-1">
+                  <span>-50%</span>
+                  <span>Aktuell</span>
+                  <span>+50%</span>
+                </div>
+              </div>
+            )}
+
+            {/* Vacancy */}
+            {selectedProperty?.isRented && (
+              <div>
+                <div className="flex justify-between mb-2">
+                  <label className="text-sm text-slate-400">Leerstand</label>
+                  <span className="font-bold text-white">
+                    {vacancyMonths} Monate/Jahr
+                    {vacancyMonths > 0 && <span className="text-xs ml-2 text-red-400">-{Math.round(vacancyMonths/12*100)}% Miete</span>}
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="6"
+                  step="1"
+                  value={vacancyMonths}
+                  onChange={(e) => setVacancyMonths(Number(e.target.value))}
+                  className="w-full accent-amber-500 h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer"
+                />
+                <div className="flex justify-between text-[10px] text-slate-500 mt-1">
+                  <span>Keine</span>
+                  <span>3 Mon</span>
+                  <span>6 Mon</span>
+                </div>
+              </div>
+            )}
+
+            {/* Extra Repayment */}
+            <div>
+              <div className="flex justify-between mb-2">
+                <label className="text-sm text-slate-400">Extra Sondertilgung/Jahr</label>
+                <span className="font-bold text-white">
+                  +<Money value={extraRepayment} privacy={privacy} fractionDigits={0} />
+                </span>
+              </div>
+              <input
+                type="range"
+                min="0"
+                max="50000"
+                step="1000"
+                value={extraRepayment}
+                onChange={(e) => setExtraRepayment(Number(e.target.value))}
+                className="w-full accent-amber-500 h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer"
+              />
+              <div className="flex justify-between text-[10px] text-slate-500 mt-1">
+                <span>€0</span>
+                <span>€25k</span>
+                <span>€50k</span>
+              </div>
+            </div>
+
+            {/* Expenses */}
+            <div>
+              <div className="flex justify-between mb-2">
+                <label className="text-sm text-slate-400">Nebenkosten-Änderung</label>
+                <span className="font-bold text-white">
+                  <Money value={simulation.simulated.expenses} privacy={privacy} fractionDigits={0} />/Mo
+                  <DeltaDisplay value={expenseAdjust} suffix="%" inverted />
+                </span>
+              </div>
+              <input
+                type="range"
+                min="-20"
+                max="50"
+                step="5"
+                value={expenseAdjust}
+                onChange={(e) => setExpenseAdjust(Number(e.target.value))}
+                className="w-full accent-amber-500 h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer"
+              />
+              <div className="flex justify-between text-[10px] text-slate-500 mt-1">
+                <span>-20%</span>
+                <span>Aktuell</span>
+                <span>+50%</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Reset Button */}
+          <Button
+            variant="ghost"
+            className="mt-6 w-full"
+            onClick={() => {
+              setInterestRateAdjust(0);
+              setValueAdjust(0);
+              setRentAdjust(0);
+              setExtraRepayment(0);
+              setExpenseAdjust(0);
+              setVacancyMonths(0);
+            }}
+          >
+            Zurücksetzen
+          </Button>
+        </Card>
+
+        {/* Results */}
+        <div className="space-y-6">
+          {/* Key Metrics */}
+          <div className="grid grid-cols-2 gap-4">
+            <Card className="text-center">
+              <p className="text-slate-400 text-xs uppercase tracking-wide mb-1">Monatliche Rate</p>
+              <p className="text-xl font-bold text-white">
+                <Money value={simulation.simulated.monthlyPayment} privacy={privacy} fractionDigits={0} />
+              </p>
+              <DeltaDisplay value={simulation.deltas.monthlyPayment} inverted />
+            </Card>
+            <Card className={`text-center ${simulation.simulated.cashflow >= 0 ? 'ring-1 ring-emerald-500/30' : 'ring-1 ring-red-500/30'}`}>
+              <p className="text-slate-400 text-xs uppercase tracking-wide mb-1">Cashflow/Monat</p>
+              <p className={`text-xl font-bold ${simulation.simulated.cashflow >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                <Money value={simulation.simulated.cashflow} privacy={privacy} fractionDigits={0} sign />
+              </p>
+              <DeltaDisplay value={simulation.deltas.cashflow} />
+            </Card>
+            <Card className="text-center">
+              <p className="text-slate-400 text-xs uppercase tracking-wide mb-1">Eigenkapital</p>
+              <p className="text-xl font-bold text-emerald-400">
+                <Money value={simulation.simulated.equity} privacy={privacy} fractionDigits={0} />
+              </p>
+              <DeltaDisplay value={simulation.deltas.equity} />
+            </Card>
+            <Card className="text-center">
+              <p className="text-slate-400 text-xs uppercase tracking-wide mb-1">Jahre bis Tilgung</p>
+              <p className="text-xl font-bold text-white">
+                {simulation.simulated.yearsToPayoff === Infinity ? '∞' : simulation.simulated.yearsToPayoff}
+              </p>
+              {simulation.deltas.yearsToPayoff !== 0 && simulation.simulated.yearsToPayoff !== Infinity && (
+                <DeltaDisplay value={-simulation.deltas.yearsToPayoff} suffix=" J." />
+              )}
+            </Card>
+          </div>
+
+          {/* Additional Metrics */}
+          <Card>
+            <h4 className="text-sm font-bold text-white mb-4">Detailberechnung</h4>
+            <div className="space-y-3 text-sm">
+              <div className="flex justify-between">
+                <span className="text-slate-400">Jährlicher Cashflow:</span>
+                <span className={simulation.simulated.cashflow >= 0 ? 'text-emerald-400' : 'text-red-400'}>
+                  <Money value={simulation.simulated.cashflow * 12} privacy={privacy} fractionDigits={0} sign />
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">ROI auf Eigenkapital:</span>
+                <span className={simulation.simulated.roi >= 0 ? 'text-emerald-400' : 'text-red-400'}>
+                  {simulation.simulated.roi.toFixed(1)}%
+                  <DeltaDisplay value={simulation.deltas.roi} suffix="%" />
+                </span>
+              </div>
+              {selectedProperty?.isRented && (
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Break-Even Miete:</span>
+                  <span className="text-white">
+                    <Money value={simulation.simulated.breakEvenRent} privacy={privacy} fractionDigits={0} />/Mo
+                  </span>
+                </div>
+              )}
+              <div className="flex justify-between">
+                <span className="text-slate-400">Monatl. Zinsen (sim):</span>
+                <span className="text-white">
+                  <Money value={simulation.simulated.monthlyInterest} privacy={privacy} />
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Monatl. Tilgung (sim):</span>
+                <span className="text-white">
+                  <Money value={simulation.simulated.monthlyPrincipal} privacy={privacy} />
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Gesamte Sondertilgung/Jahr:</span>
+                <span className="text-white">
+                  <Money value={simulation.simulated.specialRepayment} privacy={privacy} fractionDigits={0} />
+                </span>
+              </div>
+            </div>
+          </Card>
+        </div>
+      </div>
+
+      {/* Projection Chart */}
+      <Card>
+        <h3 className="text-lg font-bold text-white mb-4">Vermögensvergleich: Aktuell vs. Simulation (20 Jahre)</h3>
+        <div className="h-80">
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={projectionData} margin={{ top: 20, right: 20, left: 20, bottom: 20 }}>
+              <defs>
+                <linearGradient id="colorCurrentEquity" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3}/>
+                  <stop offset="95%" stopColor="#6366f1" stopOpacity={0}/>
+                </linearGradient>
+                <linearGradient id="colorSimEquity" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.3}/>
+                  <stop offset="95%" stopColor="#f59e0b" stopOpacity={0}/>
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
+              <XAxis dataKey="year" stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} />
+              <YAxis stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(val) => privacy ? '' : `€${val/1000}k`} />
+              <RechartsTooltip 
+                contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px' }} 
+                formatter={(val: number, name: string) => [privacy ? '****' : `€${val.toLocaleString()}`, name]}
+                labelFormatter={(label) => `Jahr ${label}`}
+              />
+              <Legend />
+              <Area type="monotone" name="Aktuell (Eigenkapital)" dataKey="currentEquity" stroke="#6366f1" fill="url(#colorCurrentEquity)" strokeWidth={2} strokeDasharray="5 5" />
+              <Area type="monotone" name="Simulation (Eigenkapital)" dataKey="simEquity" stroke="#f59e0b" fill="url(#colorSimEquity)" strokeWidth={3} />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
       </Card>
     </div>
   );
