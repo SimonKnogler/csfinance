@@ -14,7 +14,7 @@ export const autoCategorizeTransaction = async (description: string): Promise<st
     const categories = Object.values(Category).join(', ');
     const prompt = `Classify the transaction description "${description}" into one of these categories: ${categories}. Return ONLY the category name exactly as listed. If unsure, return "Miscellaneous".`;
     
-    const model = ai.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    const model = ai.getGenerativeModel({ model: 'gemini-2.0-flash' });
     const response = await model.generateContent(prompt);
     const result = await response.response;
 
@@ -58,7 +58,7 @@ export const generateFinancialInsights = async (transactions: Transaction[]) => 
 
   try {
     const model = ai.getGenerativeModel({ 
-      model: 'gemini-1.5-flash',
+      model: 'gemini-2.0-flash',
       generationConfig: {
         responseMimeType: "application/json",
         responseSchema: responseSchema,
@@ -110,7 +110,7 @@ export const chatWithAI = async (
 
   try {
     const model = ai.getGenerativeModel({ 
-      model: 'gemini-1.5-flash',
+      model: 'gemini-2.0-flash',
       systemInstruction: FINANCE_SYSTEM_PROMPT,
     });
 
