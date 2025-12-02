@@ -128,13 +128,17 @@ export const Portfolio: React.FC<PortfolioProps> = ({ privacy }) => {
         const allHistory = await Promise.all(historyPromises);
         const historyMap = new Map(allHistory.map(h => [h.symbol, h.data]));
         
-        // Portfolio start date - only show data from when all positions were bought
+        // Portfolio start date - only apply for longer time ranges (6M, 1Y, ALL)
+        // For short ranges (1D, 1W, 1M), show all available data from the API
         // Note: API timestamps are in SECONDS, so divide by 1000
         const PORTFOLIO_START_DATE = new Date('2025-10-20').getTime() / 1000;
+        const shouldFilterByStartDate = [TimeRange.SIX_MONTHS, TimeRange.YEAR, TimeRange.ALL].includes(timeRange);
         
-        // Get MSCI data, filtered to portfolio start date
+        // Get MSCI data, optionally filtered to portfolio start date
         const allMsciData = historyMap.get('URTH') || [];
-        const msciData = allMsciData.filter(p => p.timestamp >= PORTFOLIO_START_DATE);
+        const msciData = shouldFilterByStartDate 
+          ? allMsciData.filter(p => p.timestamp >= PORTFOLIO_START_DATE)
+          : allMsciData;
         const msciBaseline = msciData.length > 0 ? msciData[0].price : 100;
         
         // Build timestamp map from all holdings
@@ -143,13 +147,16 @@ export const Portfolio: React.FC<PortfolioProps> = ({ privacy }) => {
         holdings.forEach(holding => {
           const data = historyMap.get(holding.symbol) || [];
           data.forEach(point => {
-            if (!timestampMap.has(point.timestamp)) {
-              timestampMap.set(point.timestamp, {
-                date: point.date,
-                pricesBySymbol: new Map(),
-              });
+            // For short ranges, include all data; for long ranges, filter by start date
+            if (!shouldFilterByStartDate || point.timestamp >= PORTFOLIO_START_DATE) {
+              if (!timestampMap.has(point.timestamp)) {
+                timestampMap.set(point.timestamp, {
+                  date: point.date,
+                  pricesBySymbol: new Map(),
+                });
+              }
+              timestampMap.get(point.timestamp)!.pricesBySymbol.set(holding.symbol, point.price);
             }
-            timestampMap.get(point.timestamp)!.pricesBySymbol.set(holding.symbol, point.price);
           });
         });
         
@@ -163,9 +170,7 @@ export const Portfolio: React.FC<PortfolioProps> = ({ privacy }) => {
           }
         });
         
-        const sortedTimestamps = Array.from(timestampMap.keys())
-          .filter(ts => ts >= PORTFOLIO_START_DATE) // Filter out data before portfolio start
-          .sort((a, b) => a - b);
+        const sortedTimestamps = Array.from(timestampMap.keys()).sort((a, b) => a - b);
         
         if (!sortedTimestamps.length) {
           if (!cancelled) setHistoryData([]);
