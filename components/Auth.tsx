@@ -30,11 +30,11 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
         await StorageService.login(username);
         onLogin();
       } else {
-        setError('Invalid credentials. Access denied.');
+        setError('Ungültige Anmeldedaten. Zugriff verweigert.');
       }
     } catch (err) {
       console.error('Auth error:', err);
-      setError('Authentication failed. Please try again.');
+      setError('Authentifizierung fehlgeschlagen. Bitte erneut versuchen.');
     } finally {
       setLoading(false);
     }
@@ -54,14 +54,14 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
             <Wallet className="text-white w-8 h-8" />
           </div>
           <h1 className="text-2xl font-bold text-white tracking-tight">FinanceCS</h1>
-          <p className="text-slate-400">Private wealth management</p>
+          <p className="text-slate-400">Private Vermögensverwaltung</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="relative">
             <UserIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500 z-10" />
             <Input 
-              placeholder="Username" 
+              placeholder="Benutzername" 
               className="pl-10" 
               value={username}
               onChange={(e) => setUsername(e.target.value)}
@@ -73,7 +73,7 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
             <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500 z-10" />
             <Input 
               type="password" 
-              placeholder="Password" 
+              placeholder="Passwort" 
               className="pl-10" 
               value={password}
               onChange={(e) => setPassword(e.target.value)}
@@ -89,14 +89,14 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
           )}
 
           <Button type="submit" className="w-full py-3 mt-2" disabled={loading || !username || !password}>
-            {loading ? <Loader2 className="animate-spin" /> : 'Sign In'} 
+            {loading ? <Loader2 className="animate-spin" /> : 'Anmelden'} 
             {!loading && <ArrowRight size={18} />}
           </Button>
         </form>
 
         <div className="mt-6 text-center">
           <p className="text-slate-500 text-xs">
-            Access restricted to authorized users only.
+            Zugang nur für autorisierte Benutzer.
           </p>
         </div>
       </Card>

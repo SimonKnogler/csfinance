@@ -171,6 +171,7 @@ export interface RecurringEntry {
   type: 'INCOME' | 'EXPENSE';
   category: string;
   frequency: 'MONTHLY' | 'YEARLY' | 'WEEKLY';
+  owner: PortfolioOwner;
   isActive: boolean;
   notes?: string;
 }

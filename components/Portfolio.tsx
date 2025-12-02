@@ -444,19 +444,43 @@ export const Portfolio: React.FC<PortfolioProps> = ({ privacy }) => {
     // Portfolio total = investments + cash (real estate shown separately in Net Worth dashboard)
     const netWorth = portfolioValue + cashValue;
 
-    // Portfolio performance (investments only, cash doesn't affect this)
-    const totalReturn = portfolioValue - portfolioCost;
-    const totalReturnPercent = portfolioCost > 0 ? (totalReturn / portfolioCost) * 100 : 0;
+    // Time-based portfolio return (based on selected time range)
+    let timeBasedReturn = 0;
+    let timeBasedReturnPercent = 0;
+    
+    if (historyData.length > 0) {
+      // Get the portfolio value at the start of the selected period
+      const startValue = activeTab === 'Total' 
+        ? historyData[0]?.Total 
+        : activeTab === 'Me' 
+          ? historyData[0]?.Me 
+          : historyData[0]?.Carolina;
+      
+      const currentValue = activeTab === 'Total' 
+        ? historyData[historyData.length - 1]?.Total 
+        : activeTab === 'Me' 
+          ? historyData[historyData.length - 1]?.Me 
+          : historyData[historyData.length - 1]?.Carolina;
+      
+      if (startValue && startValue > 0 && currentValue) {
+        timeBasedReturn = currentValue - startValue;
+        timeBasedReturnPercent = ((currentValue - startValue) / startValue) * 100;
+      }
+    }
+    
+    // Fallback to all-time return if no history data
+    const totalReturn = historyData.length > 0 ? timeBasedReturn : (portfolioValue - portfolioCost);
+    const totalReturnPercent = historyData.length > 0 ? timeBasedReturnPercent : (portfolioCost > 0 ? ((portfolioValue - portfolioCost) / portfolioCost) * 100 : 0);
 
     return { 
       netWorth,           // Portfolio + Cash only
       portfolioValue,     // Investments only
       cashValue,          // Cash only
-      totalReturn,        // Investment gains/losses
-      totalReturnPercent, // Investment performance %
-      dayChangeVal        // Today's change
+      totalReturn,        // Time-based or all-time return
+      totalReturnPercent, // Time-based or all-time %
+      dayChangeVal        // Today's change (independent)
     };
-  }, [filteredHoldings, cashHoldings, activeTab, latestPricesFromHistory]);
+  }, [filteredHoldings, cashHoldings, activeTab, latestPricesFromHistory, historyData]);
 
   const lastUpdatedLabel = holdingLastUpdated ? new Date(holdingLastUpdated).toLocaleString() : null;
   const latestHoldingPrice = useMemo(() => {
@@ -515,9 +539,12 @@ export const Portfolio: React.FC<PortfolioProps> = ({ privacy }) => {
     }
   };
 
-  const handleDeleteHolding = (id: string) => {
-    if (window.confirm('Are you sure you want to delete this position?')) {
-      updateHoldings(holdings.filter(h => h.id !== id));
+  const handleDeleteHolding = async (id: string) => {
+    if (window.confirm('Diese Position wirklich löschen?')) {
+      // Delete from cloud and local storage
+      await StorageService.deleteHolding(id);
+      // Update local state
+      setHoldings(holdings.filter(h => h.id !== id));
     }
   };
 
@@ -547,7 +574,7 @@ export const Portfolio: React.FC<PortfolioProps> = ({ privacy }) => {
         </div>
         {subView === SubView.OVERVIEW && (
           <div className="flex items-center gap-2">
-            <span className="text-xs text-slate-500 hidden md:block">Last updated: Just now</span>
+            <span className="text-xs text-slate-500 hidden md:block">Zuletzt aktualisiert: Gerade eben</span>
              <Button variant="ghost" onClick={refreshPrices} disabled={isRefreshing} className="h-9 w-9 p-0 rounded-lg border border-slate-700 bg-darker">
                 <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
              </Button>
@@ -561,8 +588,8 @@ export const Portfolio: React.FC<PortfolioProps> = ({ privacy }) => {
         <>
           {/* OWNER TABS */}
           <div className="flex bg-darker p-1 rounded-lg border border-slate-800 w-full md:w-fit mb-6">
-             <button onClick={() => setActiveTab('Total')} className={`flex-1 md:flex-none px-6 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'Total' ? 'bg-slate-700 text-white' : 'text-slate-400 hover:text-white'}`}>Total</button>
-             <button onClick={() => setActiveTab('Me')} className={`flex-1 md:flex-none px-6 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'Me' ? 'bg-slate-700 text-white' : 'text-slate-400 hover:text-white'}`}>Me</button>
+             <button onClick={() => setActiveTab('Total')} className={`flex-1 md:flex-none px-6 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'Total' ? 'bg-slate-700 text-white' : 'text-slate-400 hover:text-white'}`}>Gesamt</button>
+             <button onClick={() => setActiveTab('Me')} className={`flex-1 md:flex-none px-6 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'Me' ? 'bg-slate-700 text-white' : 'text-slate-400 hover:text-white'}`}>Ich</button>
              <button onClick={() => setActiveTab('Carolina')} className={`flex-1 md:flex-none px-6 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'Carolina' ? 'bg-slate-700 text-white' : 'text-slate-400 hover:text-white'}`}>Carolina</button>
           </div>
 
@@ -570,13 +597,13 @@ export const Portfolio: React.FC<PortfolioProps> = ({ privacy }) => {
           <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
             <Card className="relative overflow-hidden bg-gradient-to-br from-indigo-500/20 via-slate-900 to-slate-900 border-indigo-500/30">
               <div className="relative z-10">
-                <p className="text-indigo-300 font-medium mb-1 text-sm uppercase tracking-wide">Net Worth ({activeTab})</p>
+                <p className="text-indigo-300 font-medium mb-1 text-sm uppercase tracking-wide">Nettovermögen ({activeTab === 'Total' ? 'Gesamt' : activeTab === 'Me' ? 'Ich' : activeTab})</p>
                 <h2 className="text-4xl font-bold text-white mb-2">
                   <Money value={metrics.netWorth} privacy={privacy} />
                 </h2>
                 <div className="text-xs text-slate-400 mt-2">
                   Portfolio: <Money value={metrics.portfolioValue} privacy={privacy} fractionDigits={0} /> 
-                  {metrics.cashValue > 0 && <> + Cash: <Money value={metrics.cashValue} privacy={privacy} fractionDigits={0} /></>}
+                  {metrics.cashValue > 0 && <> + Bargeld: <Money value={metrics.cashValue} privacy={privacy} fractionDigits={0} /></>}
                 </div>
               </div>
               <div className="absolute -right-6 -bottom-6 text-indigo-500/10 z-0">
@@ -584,16 +611,16 @@ export const Portfolio: React.FC<PortfolioProps> = ({ privacy }) => {
               </div>
             </Card>
             <Card>
-              <p className="text-slate-400 font-medium mb-1 text-sm uppercase tracking-wide">Cash</p>
+              <p className="text-slate-400 font-medium mb-1 text-sm uppercase tracking-wide">Bargeld</p>
               <h2 className="text-3xl font-bold text-white mb-2">
                 <Money value={metrics.cashValue} privacy={privacy} fractionDigits={0} />
               </h2>
               <Button onClick={() => setIsAddCashModalOpen(true)} className="text-xs h-7 mt-1">
-                <Plus className="w-3 h-3" /> Add Cash
+                <Plus className="w-3 h-3" /> Hinzufügen
               </Button>
             </Card>
             <Card>
-              <p className="text-slate-400 font-medium mb-1 text-sm uppercase tracking-wide">Portfolio Return</p>
+              <p className="text-slate-400 font-medium mb-1 text-sm uppercase tracking-wide">Rendite ({timeRange})</p>
               <div className="flex items-baseline gap-3">
                  <h2 className={`text-3xl font-bold`}>
                    <Money value={metrics.totalReturn} privacy={privacy} colored sign fractionDigits={0} />
@@ -602,14 +629,14 @@ export const Portfolio: React.FC<PortfolioProps> = ({ privacy }) => {
                   {metrics.totalReturnPercent >= 0 ? '+' : ''}{metrics.totalReturnPercent.toFixed(2)}%
                 </span>
               </div>
-              <p className="text-xs text-slate-500 mt-2">Investments only</p>
+              <p className="text-xs text-slate-500 mt-2">Zeitraumbasierte Rendite</p>
             </Card>
             <Card>
-              <p className="text-slate-400 font-medium mb-1 text-sm uppercase tracking-wide">Today's Change</p>
+              <p className="text-slate-400 font-medium mb-1 text-sm uppercase tracking-wide">Heutige Änderung</p>
               <h2 className={`text-3xl font-bold`}>
                 <Money value={metrics.dayChangeVal} privacy={privacy} colored sign />
               </h2>
-               <p className="text-xs text-slate-500 mt-2">Portfolio only</p>
+               <p className="text-xs text-slate-500 mt-2">Tagesperformance</p>
             </Card>
           </div>
 
@@ -617,8 +644,8 @@ export const Portfolio: React.FC<PortfolioProps> = ({ privacy }) => {
           <Card className="flex flex-col mb-6">
             <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
               <div>
-                <p className="text-xs uppercase tracking-[0.2em] text-slate-500 mb-1">Portfolio Performance</p>
-                <p className="text-sm text-slate-400">Relative returns since start of selected period</p>
+                <p className="text-xs uppercase tracking-[0.2em] text-slate-500 mb-1">Portfolio Entwicklung</p>
+                <p className="text-sm text-slate-400">Relative Rendite seit Beginn des ausgewählten Zeitraums</p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <button onClick={() => setShowBenchmark(!showBenchmark)} className={`px-3 py-1.5 text-sm font-medium rounded-md border border-slate-700 flex items-center gap-2 transition-all ${showBenchmark ? 'bg-indigo-500/20 text-indigo-300 border-indigo-500/50' : 'text-slate-400 hover:text-white bg-darker'}`}>
@@ -686,13 +713,13 @@ export const Portfolio: React.FC<PortfolioProps> = ({ privacy }) => {
               <table className="w-full text-left border-collapse">
                 <thead className="bg-slate-900/50 text-xs uppercase text-slate-400 font-semibold">
                   <tr>
-                    <th className="p-4 pl-6">Asset</th>
-                    <th className="p-4 text-right">Price</th>
-                    <th className="p-4 text-right">Shares</th>
-                    <th className="p-4 text-right">Value</th>
-                    <th className="p-4 text-right">Return</th>
-                    <th className="p-4 text-center">Owner</th>
-                    <th className="p-4 text-right pr-6">Actions</th>
+                    <th className="p-4 pl-6">Anlage</th>
+                    <th className="p-4 text-right">Kurs</th>
+                    <th className="p-4 text-right">Anteile</th>
+                    <th className="p-4 text-right">Wert</th>
+                    <th className="p-4 text-right">Rendite</th>
+                    <th className="p-4 text-center">Besitzer</th>
+                    <th className="p-4 text-right pr-6">Aktionen</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800">
@@ -741,7 +768,7 @@ export const Portfolio: React.FC<PortfolioProps> = ({ privacy }) => {
                         </td>
                         <td className="p-4 text-center">
                           <Badge color={h.owner === PortfolioOwner.ME ? 'bg-indigo-500/20 text-indigo-300' : 'bg-pink-500/20 text-pink-300'}>
-                            {h.owner === PortfolioOwner.ME ? 'Me' : 'Carolina'}
+                            {h.owner === PortfolioOwner.ME ? 'Ich' : 'Carolina'}
                           </Badge>
                         </td>
                         <td className="p-4 text-right pr-6">
@@ -761,11 +788,11 @@ export const Portfolio: React.FC<PortfolioProps> = ({ privacy }) => {
           <Card className="mb-8">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4">
               <div>
-                <h3 className="text-lg font-semibold text-white">Stock Price Chart</h3>
+                <h3 className="text-lg font-semibold text-white">Kursentwicklung</h3>
                 {(lastUpdatedLabel || holdingSource) && (
                   <div className="text-xs text-slate-500 mt-1 flex flex-col sm:flex-row sm:items-center gap-2">
-                    {lastUpdatedLabel && <span>Last updated {lastUpdatedLabel}</span>}
-                    {holdingSource && <span>Source: {holdingSource}</span>}
+                    {lastUpdatedLabel && <span>Zuletzt aktualisiert {lastUpdatedLabel}</span>}
+                    {holdingSource && <span>Quelle: {holdingSource}</span>}
                   </div>
                 )}
               </div>
@@ -783,7 +810,7 @@ export const Portfolio: React.FC<PortfolioProps> = ({ privacy }) => {
             </div>
             {holdingError && (
               <div className="mb-4 rounded-lg border border-red-500/40 bg-red-500/10 p-4 text-sm text-red-100">
-                <p className="font-semibold mb-1">Unable to load Yahoo Finance data.</p>
+                <p className="font-semibold mb-1">Yahoo Finance Daten konnten nicht geladen werden.</p>
                 <p>{holdingError}</p>
               </div>
             )}
@@ -791,20 +818,20 @@ export const Portfolio: React.FC<PortfolioProps> = ({ privacy }) => {
               isHoldingHistoryLoading ? (
                 <div className="flex items-center justify-center py-12 text-slate-400">
                   <Loader2 className="w-5 h-5 animate-spin mr-2" />
-                  Loading chart...
+                  Lade Daten...
                 </div>
               ) : (
                 holdingHistory.length === 0 ? (
-                  <p className="text-slate-400 text-sm">No historical data available for this ticker.</p>
+                  <p className="text-slate-400 text-sm">Keine historischen Daten für dieses Symbol verfügbar.</p>
                 ) : (
                   <>
                   <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-4">
                     <div>
-                      <p className="text-slate-400 text-sm uppercase tracking-wide">Selected Position</p>
+                      <p className="text-slate-400 text-sm uppercase tracking-wide">Ausgewählte Position</p>
                       <div className="flex items-center gap-3 mt-1">
                         <h4 className="text-2xl font-bold text-white">{selectedHolding.symbol}</h4>
                         <Badge color={selectedHolding.owner === PortfolioOwner.ME ? 'bg-indigo-500/20 text-indigo-300' : 'bg-pink-500/20 text-pink-300'}>
-                          {selectedHolding.owner === PortfolioOwner.ME ? 'Me' : 'Carolina'}
+                          {selectedHolding.owner === PortfolioOwner.ME ? 'Ich' : 'Carolina'}
                         </Badge>
                       </div>
                       <p className="text-slate-500 text-sm">{selectedHolding.name}</p>
@@ -826,19 +853,19 @@ export const Portfolio: React.FC<PortfolioProps> = ({ privacy }) => {
                     </div>
                     <div className="flex gap-6 text-sm">
                       <div>
-                        <p className="text-slate-400">Current Price</p>
+                        <p className="text-slate-400">Aktueller Kurs</p>
                         <p className="text-white font-semibold">
                           <Money value={latestHoldingPrice} privacy={privacy} />
                         </p>
                       </div>
                       <div>
-                        <p className="text-slate-400">Value</p>
+                        <p className="text-slate-400">Wert</p>
                         <p className="text-white font-semibold">
                           <Money value={latestHoldingPrice * selectedHolding.shares} privacy={privacy} />
                         </p>
                       </div>
                       <div>
-                        <p className="text-slate-400">Shares</p>
+                        <p className="text-slate-400">Anteile</p>
                         <p className="text-white font-semibold">{selectedHolding.shares}</p>
                       </div>
                     </div>
@@ -915,7 +942,7 @@ export const Portfolio: React.FC<PortfolioProps> = ({ privacy }) => {
                 )
               )
             ) : (
-              <p className="text-slate-400 text-sm">Select a position from the table above to view its performance chart.</p>
+              <p className="text-slate-400 text-sm">Wähle eine Position aus der Tabelle, um den Kursverlauf anzuzeigen.</p>
             )}
           </Card>
 
@@ -942,7 +969,14 @@ export const Portfolio: React.FC<PortfolioProps> = ({ privacy }) => {
           onSave={(cash) => {
             const newCash = [...cashHoldings, cash];
             updateCash(newCash);
-            setIsAddCashModalOpen(false);
+          }}
+          onUpdate={(cash) => {
+            const updated = cashHoldings.map(c => c.id === cash.id ? cash : c);
+            updateCash(updated);
+          }}
+          onDelete={async (id) => {
+            await StorageService.deleteCash(id);
+            setCashHoldings(cashHoldings.filter(c => c.id !== id));
           }}
           existingCash={cashHoldings}
         />
@@ -989,11 +1023,11 @@ const WealthCalculator: React.FC<{ currentTotal: number, privacy: boolean }> = (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
       {/* CONTROLS */}
       <div className="space-y-6">
-        <Card title="Projection Parameters">
+        <Card title="Projektions-Parameter">
            <div className="space-y-6">
              <div>
                <div className="flex justify-between mb-2">
-                 <label className="text-sm text-slate-400">Monthly Contribution</label>
+                 <label className="text-sm text-slate-400">Monatliche Sparrate</label>
                  <span className="font-bold text-white"><Money value={monthlyContribution} privacy={privacy} fractionDigits={0} /></span>
                </div>
                <input type="range" min="0" max="10000" step="100" value={monthlyContribution} onChange={(e) => setMonthlyContribution(Number(e.target.value))} className="w-full accent-primary h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer" />
@@ -1001,21 +1035,21 @@ const WealthCalculator: React.FC<{ currentTotal: number, privacy: boolean }> = (
 
              <div>
                <div className="flex justify-between mb-2">
-                 <label className="text-sm text-slate-400">Expected Annual Return</label>
+                 <label className="text-sm text-slate-400">Erwartete Jahresrendite</label>
                  <span className="font-bold text-white">{annualReturn}%</span>
                </div>
                <input type="range" min="1" max="15" step="0.5" value={annualReturn} onChange={(e) => setAnnualReturn(Number(e.target.value))} className="w-full accent-primary h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer" />
                <div className="flex justify-between text-[10px] text-slate-500 mt-1">
-                 <span>Conservative (3%)</span>
-                 <span>S&P500 Avg (10%)</span>
-                 <span>Aggressive (15%)</span>
+                 <span>Konservativ (3%)</span>
+                 <span>S&P500 Ø (10%)</span>
+                 <span>Aggressiv (15%)</span>
                </div>
              </div>
 
              <div>
                <div className="flex justify-between mb-2">
-                 <label className="text-sm text-slate-400">Time Horizon</label>
-                 <span className="font-bold text-white">{years} Years</span>
+                 <label className="text-sm text-slate-400">Anlagehorizont</label>
+                 <span className="font-bold text-white">{years} Jahre</span>
                </div>
                <input type="range" min="5" max="40" step="1" value={years} onChange={(e) => setYears(Number(e.target.value))} className="w-full accent-primary h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer" />
              </div>
@@ -1024,10 +1058,10 @@ const WealthCalculator: React.FC<{ currentTotal: number, privacy: boolean }> = (
 
         <Card className="bg-gradient-to-br from-primary/20 to-purple-500/20 border-primary/30">
           <div className="text-center py-4">
-             <p className="text-slate-300 text-sm mb-2">Projected Wealth in {years} Years</p>
+             <p className="text-slate-300 text-sm mb-2">Vermögen in {years} Jahren</p>
              <h2 className="text-4xl font-bold text-white mb-4"><Money value={finalAmount} privacy={privacy} fractionDigits={0} /></h2>
              <div className="inline-block bg-black/30 px-4 py-2 rounded-lg text-sm">
-                <span className="text-slate-400">Total Interest Earned: </span>
+                <span className="text-slate-400">Gesamtzinsen: </span>
                 <span className="text-emerald-400 font-bold">+<Money value={finalInterest} privacy={privacy} fractionDigits={0} currency="" /></span>
              </div>
           </div>
@@ -1036,7 +1070,7 @@ const WealthCalculator: React.FC<{ currentTotal: number, privacy: boolean }> = (
 
       {/* CHART */}
       <Card className="lg:col-span-2 flex flex-col">
-        <h3 className="text-lg font-bold text-white mb-6">Wealth Growth Trajectory</h3>
+        <h3 className="text-lg font-bold text-white mb-6">Vermögensentwicklung</h3>
         <div className="flex-1 min-h-[400px]">
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={projectionData} margin={{ top: 20, right: 20, left: 20, bottom: 20 }}>
@@ -1056,11 +1090,11 @@ const WealthCalculator: React.FC<{ currentTotal: number, privacy: boolean }> = (
                <RechartsTooltip 
                   contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px' }} 
                   formatter={(val: number) => [privacy ? '****' : `€${val.toLocaleString()}`]}
-                  labelFormatter={(label) => `Year ${label}`}
+                  labelFormatter={(label) => `Jahr ${label}`}
                 />
                <Legend verticalAlign="top" height={36} />
-               <Area type="monotone" name="Total Wealth" dataKey="balance" stroke="#6366f1" fill="url(#colorBalance)" strokeWidth={3} />
-               <Area type="monotone" name="Principal Invested" dataKey="invested" stroke="#94a3b8" fill="url(#colorInvested)" strokeWidth={2} strokeDasharray="5 5" />
+               <Area type="monotone" name="Gesamtvermögen" dataKey="balance" stroke="#6366f1" fill="url(#colorBalance)" strokeWidth={3} />
+               <Area type="monotone" name="Eingezahlt" dataKey="invested" stroke="#94a3b8" fill="url(#colorInvested)" strokeWidth={2} strokeDasharray="5 5" />
             </AreaChart>
           </ResponsiveContainer>
         </div>
@@ -1103,12 +1137,12 @@ const HoldingModal: React.FC<{
         <button onClick={onClose} className="absolute right-4 top-4 text-slate-500 hover:text-white">
            <X size={20} />
         </button>
-        <h2 className="text-xl font-bold text-white mb-6">{initialData ? 'Edit Position' : 'Add Asset'}</h2>
+        <h2 className="text-xl font-bold text-white mb-6">{initialData ? 'Position bearbeiten' : 'Anlage hinzufügen'}</h2>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm text-slate-400 mb-1">Asset Type</label>
+            <label className="block text-sm text-slate-400 mb-1">Anlageart</label>
              <div className="flex bg-darker p-1 rounded-lg border border-slate-700">
-              <button type="button" onClick={() => setType(AssetType.STOCK)} className={`flex-1 py-2 rounded-md text-xs font-medium transition-colors ${type === AssetType.STOCK ? 'bg-slate-600 text-white' : 'text-slate-400'}`}>Stock</button>
+              <button type="button" onClick={() => setType(AssetType.STOCK)} className={`flex-1 py-2 rounded-md text-xs font-medium transition-colors ${type === AssetType.STOCK ? 'bg-slate-600 text-white' : 'text-slate-400'}`}>Aktie</button>
               <button type="button" onClick={() => setType(AssetType.ETF)} className={`flex-1 py-2 rounded-md text-xs font-medium transition-colors ${type === AssetType.ETF ? 'bg-slate-600 text-white' : 'text-slate-400'}`}>ETF</button>
               <button type="button" onClick={() => setType(AssetType.CRYPTO)} className={`flex-1 py-2 rounded-md text-xs font-medium transition-colors ${type === AssetType.CRYPTO ? 'bg-slate-600 text-white' : 'text-slate-400'}`}>Crypto</button>
             </div>
@@ -1119,7 +1153,7 @@ const HoldingModal: React.FC<{
             <Input 
                 value={symbol} 
                 onChange={(e) => setSymbol(e.target.value.toUpperCase())} 
-                placeholder="e.g. AAPL, BTC-USD" 
+                placeholder="z.B. AAPL, BTC-USD" 
                 required 
                 className="uppercase placeholder:normal-case"
                 disabled={!!initialData}
@@ -1128,7 +1162,7 @@ const HoldingModal: React.FC<{
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm text-slate-400 mb-1">Units/Shares</label>
+              <label className="block text-sm text-slate-400 mb-1">Anteile</label>
               <Input 
                 type="number" 
                 step="0.000001" 
@@ -1139,7 +1173,7 @@ const HoldingModal: React.FC<{
               />
             </div>
             <div>
-              <label className="block text-sm text-slate-400 mb-1">Avg. Cost</label>
+              <label className="block text-sm text-slate-400 mb-1">Ø Kaufkurs</label>
               <Input 
                 type="number" 
                 step="0.01" 
@@ -1152,14 +1186,14 @@ const HoldingModal: React.FC<{
           </div>
 
           <div>
-            <label className="block text-sm text-slate-400 mb-1">Owner</label>
+            <label className="block text-sm text-slate-400 mb-1">Besitzer</label>
             <div className="flex bg-darker p-1 rounded-lg border border-slate-700">
               <button 
                 type="button"
                 onClick={() => setOwner(PortfolioOwner.ME)}
                 className={`flex-1 py-2 rounded-md text-sm font-medium transition-colors ${owner === PortfolioOwner.ME ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}
               >
-                Me
+                Ich
               </button>
               <button 
                 type="button"
@@ -1172,9 +1206,9 @@ const HoldingModal: React.FC<{
           </div>
 
           <div className="flex gap-3 mt-6">
-            <Button type="button" variant="ghost" onClick={onClose} className="flex-1">Cancel</Button>
+            <Button type="button" variant="ghost" onClick={onClose} className="flex-1">Abbrechen</Button>
             <Button type="submit" className="flex-1" disabled={loading}>
-              {loading ? 'Saving...' : (initialData ? 'Update' : 'Add Asset')}
+              {loading ? 'Speichern...' : (initialData ? 'Aktualisieren' : 'Hinzufügen')}
             </Button>
           </div>
         </form>
@@ -1187,23 +1221,51 @@ const HoldingModal: React.FC<{
 const CashModal: React.FC<{
   onClose: () => void;
   onSave: (cash: CashHolding) => void;
+  onUpdate: (cash: CashHolding) => void;
+  onDelete: (id: string) => void;
   existingCash: CashHolding[];
-}> = ({ onClose, onSave, existingCash }) => {
+}> = ({ onClose, onSave, onUpdate, onDelete, existingCash }) => {
+  const [mode, setMode] = useState<'add' | 'modify'>('add');
+  const [operationType, setOperationType] = useState<'deposit' | 'withdraw'>('deposit');
+  const [selectedCashId, setSelectedCashId] = useState<string>('');
   const [name, setName] = useState('');
   const [amount, setAmount] = useState('');
   const [currency, setCurrency] = useState('EUR');
   const [owner, setOwner] = useState<PortfolioOwner>(PortfolioOwner.ME);
 
+  const selectedCash = existingCash.find(c => c.id === selectedCashId);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const newCash: CashHolding = {
-      id: Math.random().toString(36).substring(7),
-      name: name || `${currency} Cash`,
-      amount: Number(amount),
-      currency,
-      owner,
-    };
-    onSave(newCash);
+    
+    if (mode === 'add') {
+      // Add new cash holding
+      const newCash: CashHolding = {
+        id: Math.random().toString(36).substring(7),
+        name: name || `${currency} Bargeld`,
+        amount: Number(amount),
+        currency,
+        owner,
+      };
+      onSave(newCash);
+    } else if (selectedCash) {
+      // Modify existing cash holding
+      const changeAmount = operationType === 'deposit' ? Number(amount) : -Number(amount);
+      const updatedCash: CashHolding = {
+        ...selectedCash,
+        amount: selectedCash.amount + changeAmount,
+      };
+      
+      if (updatedCash.amount <= 0) {
+        // Delete if amount is 0 or negative
+        if (window.confirm('Konto auf 0 oder negativ. Konto löschen?')) {
+          onDelete(selectedCash.id);
+        }
+      } else {
+        onUpdate(updatedCash);
+      }
+    }
+    onClose();
   };
 
   return (
@@ -1212,62 +1274,143 @@ const CashModal: React.FC<{
         <button onClick={onClose} className="absolute right-4 top-4 text-slate-500 hover:text-white">
           <X size={20} />
         </button>
-        <h2 className="text-xl font-bold text-white mb-6">Add Cash</h2>
+        <h2 className="text-xl font-bold text-white mb-6">Bargeld verwalten</h2>
+        
+        {/* Mode Selector */}
+        <div className="flex bg-darker p-1 rounded-lg border border-slate-700 mb-6">
+          <button
+            type="button"
+            onClick={() => setMode('add')}
+            className={`flex-1 py-2 rounded-md text-sm font-medium transition-colors ${mode === 'add' ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:text-white'}`}
+          >
+            Neues Konto
+          </button>
+          <button
+            type="button"
+            onClick={() => setMode('modify')}
+            disabled={existingCash.length === 0}
+            className={`flex-1 py-2 rounded-md text-sm font-medium transition-colors ${mode === 'modify' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'} ${existingCash.length === 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
+          >
+            Ein-/Auszahlung
+          </button>
+        </div>
+
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-sm text-slate-400 mb-1">Description (Optional)</label>
-            <Input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. Savings Account, Emergency Fund"
-            />
-          </div>
+          {mode === 'add' ? (
+            <>
+              <div>
+                <label className="block text-sm text-slate-400 mb-1">Beschreibung (Optional)</label>
+                <Input
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="z.B. Sparkonto, Notgroschen"
+                />
+              </div>
 
-          <div>
-            <label className="block text-sm text-slate-400 mb-1">Amount</label>
-            <Input
-              type="number"
-              step="0.01"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              placeholder="0.00"
-              required
-            />
-          </div>
+              <div>
+                <label className="block text-sm text-slate-400 mb-1">Anfangsbetrag</label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  placeholder="0.00"
+                  required
+                />
+              </div>
 
-          <div>
-            <label className="block text-sm text-slate-400 mb-1">Currency</label>
-            <Select value={currency} onChange={(e) => setCurrency(e.target.value)}>
-              <option value="EUR">EUR (€)</option>
-              <option value="USD">USD ($)</option>
-              <option value="GBP">GBP (£)</option>
-              <option value="CHF">CHF</option>
-            </Select>
-          </div>
+              <div>
+                <label className="block text-sm text-slate-400 mb-1">Währung</label>
+                <Select value={currency} onChange={(e) => setCurrency(e.target.value)}>
+                  <option value="EUR">EUR (€)</option>
+                  <option value="USD">USD ($)</option>
+                  <option value="GBP">GBP (£)</option>
+                  <option value="CHF">CHF</option>
+                </Select>
+              </div>
 
-          <div>
-            <label className="block text-sm text-slate-400 mb-1">Owner</label>
-            <div className="flex bg-darker p-1 rounded-lg border border-slate-700">
-              <button
-                type="button"
-                onClick={() => setOwner(PortfolioOwner.ME)}
-                className={`flex-1 py-2 rounded-md text-sm font-medium transition-colors ${owner === PortfolioOwner.ME ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}
-              >
-                Me
-              </button>
-              <button
-                type="button"
-                onClick={() => setOwner(PortfolioOwner.CAROLINA)}
-                className={`flex-1 py-2 rounded-md text-sm font-medium transition-colors ${owner === PortfolioOwner.CAROLINA ? 'bg-pink-600 text-white' : 'text-slate-400 hover:text-white'}`}
-              >
-                Carolina
-              </button>
-            </div>
-          </div>
+              <div>
+                <label className="block text-sm text-slate-400 mb-1">Besitzer</label>
+                <div className="flex bg-darker p-1 rounded-lg border border-slate-700">
+                  <button
+                    type="button"
+                    onClick={() => setOwner(PortfolioOwner.ME)}
+                    className={`flex-1 py-2 rounded-md text-sm font-medium transition-colors ${owner === PortfolioOwner.ME ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}
+                  >
+                    Ich
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setOwner(PortfolioOwner.CAROLINA)}
+                    className={`flex-1 py-2 rounded-md text-sm font-medium transition-colors ${owner === PortfolioOwner.CAROLINA ? 'bg-pink-600 text-white' : 'text-slate-400 hover:text-white'}`}
+                  >
+                    Carolina
+                  </button>
+                </div>
+              </div>
+            </>
+          ) : (
+            <>
+              <div>
+                <label className="block text-sm text-slate-400 mb-1">Konto auswählen</label>
+                <Select value={selectedCashId} onChange={(e) => setSelectedCashId(e.target.value)} required>
+                  <option value="">-- Konto wählen --</option>
+                  {existingCash.map(c => (
+                    <option key={c.id} value={c.id}>
+                      {c.name} ({c.currency} {c.amount.toLocaleString()})
+                    </option>
+                  ))}
+                </Select>
+              </div>
+
+              {selectedCash && (
+                <div className="p-3 rounded-lg bg-slate-800 text-sm">
+                  <p className="text-slate-400">Aktueller Stand:</p>
+                  <p className="text-xl font-bold text-white">
+                    {selectedCash.currency === 'EUR' ? '€' : selectedCash.currency} {selectedCash.amount.toLocaleString()}
+                  </p>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-sm text-slate-400 mb-1">Vorgang</label>
+                <div className="flex bg-darker p-1 rounded-lg border border-slate-700">
+                  <button
+                    type="button"
+                    onClick={() => setOperationType('deposit')}
+                    className={`flex-1 py-2 rounded-md text-sm font-medium transition-colors ${operationType === 'deposit' ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:text-white'}`}
+                  >
+                    Einzahlung
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setOperationType('withdraw')}
+                    className={`flex-1 py-2 rounded-md text-sm font-medium transition-colors ${operationType === 'withdraw' ? 'bg-red-600 text-white' : 'text-slate-400 hover:text-white'}`}
+                  >
+                    Abhebung
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm text-slate-400 mb-1">Betrag</label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  placeholder="0.00"
+                  required
+                />
+              </div>
+            </>
+          )}
 
           <div className="flex gap-3 mt-6">
-            <Button type="button" variant="ghost" onClick={onClose} className="flex-1">Cancel</Button>
-            <Button type="submit" className="flex-1">Add Cash</Button>
+            <Button type="button" variant="ghost" onClick={onClose} className="flex-1">Abbrechen</Button>
+            <Button type="submit" className="flex-1">
+              {mode === 'add' ? 'Hinzufügen' : (operationType === 'deposit' ? 'Einzahlen' : 'Abheben')}
+            </Button>
           </div>
         </form>
       </Card>

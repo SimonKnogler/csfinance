@@ -106,6 +106,14 @@ export const StorageService = {
     }
   },
 
+  deleteHolding: async (id: string) => {
+    await IDBService.delete('portfolio', id);
+    if (CloudService.getConfig()) {
+      CloudService.deleteItem('portfolio', id)
+        .catch(e => console.error("Cloud holding delete failed:", e));
+    }
+  },
+
   getPortfolio: async (): Promise<StockHolding[]> => {
     if (CloudService.getConfig()) {
         try {
@@ -134,6 +142,14 @@ export const StorageService = {
     if (CloudService.getConfig()) {
       CloudService.saveAll('cash', cashHoldings)
         .catch(e => console.error("Cloud cash sync failed:", e));
+    }
+  },
+
+  deleteCash: async (id: string) => {
+    await IDBService.delete('cash', id);
+    if (CloudService.getConfig()) {
+      CloudService.deleteItem('cash', id)
+        .catch(e => console.error("Cloud cash delete failed:", e));
     }
   },
 
@@ -192,6 +208,14 @@ export const StorageService = {
     if (CloudService.getConfig()) {
       CloudService.saveAll('recurringEntries', entries)
         .catch(e => console.error("Cloud recurring entries sync failed:", e));
+    }
+  },
+
+  deleteRecurringEntry: async (id: string) => {
+    await IDBService.delete('recurringEntries', id);
+    if (CloudService.getConfig()) {
+      CloudService.deleteItem('recurringEntries', id)
+        .catch(e => console.error("Cloud recurring entry delete failed:", e));
     }
   },
 

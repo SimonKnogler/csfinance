@@ -20,9 +20,11 @@ import {
   Building2,
   Edit2,
   Trash2,
-  X
+  X,
+  User2,
+  Camera
 } from 'lucide-react';
-import { PortfolioDocument, RecurringEntry } from './types';
+import { PortfolioDocument, RecurringEntry, PortfolioOwner } from './types';
 import { BudgetPieChart } from './components/Charts';
 import { Card, Button, Input, Select, Badge, Money } from './components/UIComponents';
 import { Portfolio } from './components/Portfolio';
@@ -87,11 +89,14 @@ const AuthenticatedApp: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
   // Data State
   const [documents, setDocuments] = useState<PortfolioDocument[]>([]);
   const [recurringEntries, setRecurringEntries] = useState<RecurringEntry[]>([]);
+  const [profilePicUrl, setProfilePicUrl] = useState<string | null>(null);
   
   const [isAddEntryModalOpen, setIsAddEntryModalOpen] = useState(false);
   const [editingEntry, setEditingEntry] = useState<RecurringEntry | null>(null);
+  const profileInputRef = React.useRef<HTMLInputElement>(null);
   const [entryType, setEntryType] = useState<'INCOME' | 'EXPENSE'>('INCOME');
   const [isPrivacyMode, setIsPrivacyMode] = useState(false);
+  const [incomeExpenseOwnerTab, setIncomeExpenseOwnerTab] = useState<'Total' | PortfolioOwner>('Total');
 
   // Initial Data Load
   useEffect(() => {
@@ -104,10 +109,48 @@ const AuthenticatedApp: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
       
       setDocuments(docs);
       setRecurringEntries(entries);
+      
+      // Load profile picture from localStorage (URL stored after upload)
+      const savedProfilePic = localStorage.getItem('profilePictureUrl');
+      if (savedProfilePic) setProfilePicUrl(savedProfilePic);
+      
       setIsDataLoading(false);
     };
     loadData();
   }, []);
+
+  // Profile picture upload handler
+  const handleProfilePicUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    // Check file size (max 2MB)
+    if (file.size > 2 * 1024 * 1024) {
+      alert('Bild zu groß. Maximal 2MB erlaubt.');
+      return;
+    }
+    
+    try {
+      const { CloudService } = await import('./services/cloudService');
+      const url = await CloudService.uploadFile(file, `profiles/avatar_${Date.now()}`);
+      
+      if (url) {
+        setProfilePicUrl(url);
+        localStorage.setItem('profilePictureUrl', url);
+      } else {
+        // Fallback to local base64 if cloud upload fails
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          const dataUrl = ev.target?.result as string;
+          setProfilePicUrl(dataUrl);
+          localStorage.setItem('profilePictureUrl', dataUrl);
+        };
+        reader.readAsDataURL(file);
+      }
+    } catch (err) {
+      console.error('Profilbild Upload fehlgeschlagen:', err);
+    }
+  };
 
   // Save handlers
   const handleSaveDocuments = async (newDocs: PortfolioDocument[]) => {
@@ -168,9 +211,12 @@ const AuthenticatedApp: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
     setEditingEntry(null);
   };
 
-  const handleDeleteEntry = (id: string) => {
+  const handleDeleteEntry = async (id: string) => {
     if (window.confirm('Diesen Eintrag wirklich löschen?')) {
-      handleSaveRecurringEntries(recurringEntries.filter(e => e.id !== id));
+      // Delete from cloud and local storage
+      await StorageService.deleteRecurringEntry(id);
+      // Update local state
+      setRecurringEntries(recurringEntries.filter(e => e.id !== id));
     }
   };
 
@@ -220,7 +266,7 @@ const AuthenticatedApp: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
         <nav className="space-y-1 flex-1">
           <SidebarItem 
             icon={<Wallet />} 
-            label="Net Worth" 
+            label="Nettovermögen" 
             active={activeView === View.NET_WORTH} 
             onClick={() => setActiveView(View.NET_WORTH)} 
           />
@@ -241,19 +287,19 @@ const AuthenticatedApp: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
           />
           <SidebarItem 
             icon={<TrendingUp />} 
-            label="Income" 
+            label="Einnahmen" 
             active={activeView === View.INCOME} 
             onClick={() => setActiveView(View.INCOME)} 
           />
           <SidebarItem 
             icon={<TrendingDown />} 
-            label="Expenses" 
+            label="Ausgaben" 
             active={activeView === View.EXPENSES} 
             onClick={() => setActiveView(View.EXPENSES)} 
           />
           <SidebarItem 
             icon={<FileText />} 
-            label="Documents" 
+            label="Dokumente" 
             active={activeView === View.DOCUMENTS} 
             onClick={() => setActiveView(View.DOCUMENTS)} 
           />
@@ -262,7 +308,7 @@ const AuthenticatedApp: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
           </div>
           <SidebarItem 
             icon={<SettingsIcon />} 
-            label="Settings & Data" 
+            label="Einstellungen" 
             active={activeView === View.SETTINGS} 
             onClick={() => setActiveView(View.SETTINGS)} 
           />
@@ -270,7 +316,7 @@ const AuthenticatedApp: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
 
         <div className="space-y-4">
           <button onClick={handleLogout} className="flex items-center gap-2 text-slate-400 hover:text-white transition-colors text-sm px-2">
-            <LogOut size={16} /> Sign Out
+            <LogOut size={16} /> Abmelden
           </button>
 
           <div className="p-4 rounded-xl bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-700/50 mt-auto">
@@ -316,9 +362,28 @@ const AuthenticatedApp: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
                 Eintrag hinzufügen
               </Button>
             )}
-            <div className="w-10 h-10 rounded-full bg-slate-700 border border-slate-600 overflow-hidden">
-              <img src="https://picsum.photos/40/40" alt="User" className="w-full h-full object-cover opacity-80 hover:opacity-100 transition-opacity" />
-            </div>
+            {/* Profile Picture */}
+            <input 
+              ref={profileInputRef}
+              type="file" 
+              accept="image/*" 
+              className="hidden" 
+              onChange={handleProfilePicUpload}
+            />
+            <button 
+              onClick={() => profileInputRef.current?.click()}
+              className="relative w-10 h-10 rounded-full bg-slate-700 border border-slate-600 overflow-hidden group"
+              title="Profilbild ändern"
+            >
+              {profilePicUrl ? (
+                <img src={profilePicUrl} alt="Profil" className="w-full h-full object-cover" />
+              ) : (
+                <User2 className="w-full h-full p-2 text-slate-400" />
+              )}
+              <div className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                <Camera size={16} className="text-white" />
+              </div>
+            </button>
           </div>
         </header>
 
@@ -347,6 +412,13 @@ const AuthenticatedApp: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
 
           {activeView === View.INCOME && (
             <div className="max-w-7xl mx-auto space-y-8">
+               {/* Owner Tabs */}
+               <div className="flex bg-darker p-1 rounded-lg border border-slate-800 w-full md:w-fit">
+                 <button onClick={() => setIncomeExpenseOwnerTab('Total')} className={`flex-1 md:flex-none px-6 py-2 rounded-md text-sm font-medium transition-colors ${incomeExpenseOwnerTab === 'Total' ? 'bg-slate-700 text-white' : 'text-slate-400 hover:text-white'}`}>Gesamt</button>
+                 <button onClick={() => setIncomeExpenseOwnerTab(PortfolioOwner.ME)} className={`flex-1 md:flex-none px-6 py-2 rounded-md text-sm font-medium transition-colors ${incomeExpenseOwnerTab === PortfolioOwner.ME ? 'bg-slate-700 text-white' : 'text-slate-400 hover:text-white'}`}>Ich</button>
+                 <button onClick={() => setIncomeExpenseOwnerTab(PortfolioOwner.CAROLINA)} className={`flex-1 md:flex-none px-6 py-2 rounded-md text-sm font-medium transition-colors ${incomeExpenseOwnerTab === PortfolioOwner.CAROLINA ? 'bg-slate-700 text-white' : 'text-slate-400 hover:text-white'}`}>Carolina</button>
+               </div>
+
                {/* Summary Cards */}
                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <StatCard title="Monatliches Einkommen" value={totalMonthlyIncome} icon={<Banknote className="text-emerald-400" />} trend={`${incomeEntries.length} Einträge`} trendUp={true} privacy={isPrivacyMode} />
@@ -362,7 +434,13 @@ const AuthenticatedApp: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
 
                {/* Income Pie Chart */}
                <Card title="Einnahmen nach Kategorie">
-                 <BudgetPieChart entries={recurringEntries} type="INCOME" privacy={isPrivacyMode} />
+                 <BudgetPieChart 
+                   entries={incomeExpenseOwnerTab === 'Total' 
+                     ? recurringEntries 
+                     : recurringEntries.filter(e => e.owner === incomeExpenseOwnerTab)} 
+                   type="INCOME" 
+                   privacy={isPrivacyMode} 
+                 />
                </Card>
 
                {/* Recurring Income Entries */}
@@ -373,36 +451,49 @@ const AuthenticatedApp: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
                      <Plus size={16} /> Hinzufügen
                    </Button>
                  </div>
-                 {incomeEntries.length === 0 ? (
-                   <p className="text-slate-400 text-center py-8">Keine Einträge vorhanden. Füge deine erste Einnahmequelle hinzu.</p>
-                 ) : (
-                   <div className="space-y-2">
-                     {recurringEntries.filter(e => e.type === 'INCOME').map(entry => (
-                       <div key={entry.id} className={`flex items-center justify-between p-4 rounded-lg ${entry.isActive ? 'bg-slate-800' : 'bg-slate-800/50 opacity-60'}`}>
-                         <div className="flex items-center gap-4">
-                           <div className={`w-2 h-2 rounded-full ${entry.isActive ? 'bg-emerald-400' : 'bg-slate-500'}`} />
-                           <div>
-                             <p className="text-white font-medium">{entry.name}</p>
-                             <p className="text-xs text-slate-500">{entry.category} • {entry.frequency === 'MONTHLY' ? 'Monatlich' : entry.frequency === 'YEARLY' ? 'Jährlich' : 'Wöchentlich'}</p>
+                 {(() => {
+                   const filteredIncome = recurringEntries.filter(e => 
+                     e.type === 'INCOME' && 
+                     (incomeExpenseOwnerTab === 'Total' || e.owner === incomeExpenseOwnerTab)
+                   );
+                   return filteredIncome.length === 0 ? (
+                     <p className="text-slate-400 text-center py-8">Keine Einträge vorhanden. Füge deine erste Einnahmequelle hinzu.</p>
+                   ) : (
+                     <div className="space-y-2">
+                       {filteredIncome.map(entry => (
+                         <div key={entry.id} className={`flex items-center justify-between p-4 rounded-lg ${entry.isActive ? 'bg-slate-800' : 'bg-slate-800/50 opacity-60'}`}>
+                           <div className="flex items-center gap-4">
+                             <div className={`w-2 h-2 rounded-full ${entry.isActive ? 'bg-emerald-400' : 'bg-slate-500'}`} />
+                             <div>
+                               <p className="text-white font-medium">{entry.name}</p>
+                               <p className="text-xs text-slate-500">
+                                 {entry.category} • {entry.frequency === 'MONTHLY' ? 'Monatlich' : entry.frequency === 'YEARLY' ? 'Jährlich' : 'Wöchentlich'}
+                                 {incomeExpenseOwnerTab === 'Total' && entry.owner && (
+                                   <span className={`ml-2 px-1.5 py-0.5 rounded text-[10px] ${entry.owner === PortfolioOwner.ME ? 'bg-indigo-500/20 text-indigo-300' : 'bg-pink-500/20 text-pink-300'}`}>
+                                     {entry.owner === PortfolioOwner.ME ? 'Ich' : 'Carolina'}
+                                   </span>
+                                 )}
+                               </p>
+                             </div>
+                           </div>
+                           <div className="flex items-center gap-4">
+                             <p className="text-emerald-400 font-bold">
+                               <Money value={entry.amount} privacy={isPrivacyMode} />
+                             </p>
+                             <div className="flex gap-1">
+                               <button onClick={() => { setEditingEntry(entry); setEntryType('INCOME'); setIsAddEntryModalOpen(true); }} className="p-2 hover:bg-slate-700 rounded-lg text-slate-400 hover:text-white">
+                                 <Edit2 size={16} />
+                               </button>
+                               <button onClick={() => handleDeleteEntry(entry.id)} className="p-2 hover:bg-slate-700 rounded-lg text-slate-400 hover:text-red-400">
+                                 <Trash2 size={16} />
+                               </button>
+                             </div>
                            </div>
                          </div>
-                         <div className="flex items-center gap-4">
-                           <p className="text-emerald-400 font-bold">
-                             <Money value={entry.amount} privacy={isPrivacyMode} />
-                           </p>
-                           <div className="flex gap-1">
-                             <button onClick={() => { setEditingEntry(entry); setEntryType('INCOME'); setIsAddEntryModalOpen(true); }} className="p-2 hover:bg-slate-700 rounded-lg text-slate-400 hover:text-white">
-                               <Edit2 size={16} />
-                             </button>
-                             <button onClick={() => handleDeleteEntry(entry.id)} className="p-2 hover:bg-slate-700 rounded-lg text-slate-400 hover:text-red-400">
-                               <Trash2 size={16} />
-                             </button>
-                           </div>
-                         </div>
-                       </div>
-                     ))}
-                   </div>
-                 )}
+                       ))}
+                     </div>
+                   );
+                 })()}
                </Card>
 
                {/* Rental Income Tax Calculator */}
@@ -412,6 +503,13 @@ const AuthenticatedApp: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
 
           {activeView === View.EXPENSES && (
             <div className="max-w-7xl mx-auto space-y-8">
+               {/* Owner Tabs */}
+               <div className="flex bg-darker p-1 rounded-lg border border-slate-800 w-full md:w-fit">
+                 <button onClick={() => setIncomeExpenseOwnerTab('Total')} className={`flex-1 md:flex-none px-6 py-2 rounded-md text-sm font-medium transition-colors ${incomeExpenseOwnerTab === 'Total' ? 'bg-slate-700 text-white' : 'text-slate-400 hover:text-white'}`}>Gesamt</button>
+                 <button onClick={() => setIncomeExpenseOwnerTab(PortfolioOwner.ME)} className={`flex-1 md:flex-none px-6 py-2 rounded-md text-sm font-medium transition-colors ${incomeExpenseOwnerTab === PortfolioOwner.ME ? 'bg-slate-700 text-white' : 'text-slate-400 hover:text-white'}`}>Ich</button>
+                 <button onClick={() => setIncomeExpenseOwnerTab(PortfolioOwner.CAROLINA)} className={`flex-1 md:flex-none px-6 py-2 rounded-md text-sm font-medium transition-colors ${incomeExpenseOwnerTab === PortfolioOwner.CAROLINA ? 'bg-slate-700 text-white' : 'text-slate-400 hover:text-white'}`}>Carolina</button>
+               </div>
+
                {/* Summary Cards */}
                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <StatCard title="Monatliche Ausgaben" value={totalMonthlyExpense} icon={<Wallet className="text-red-400" />} trend={`${expenseEntries.length} Einträge`} trendUp={false} privacy={isPrivacyMode} />
@@ -427,7 +525,13 @@ const AuthenticatedApp: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
 
                {/* Expense Pie Chart */}
                <Card title="Ausgaben nach Kategorie">
-                 <BudgetPieChart entries={recurringEntries} type="EXPENSE" privacy={isPrivacyMode} />
+                 <BudgetPieChart 
+                   entries={incomeExpenseOwnerTab === 'Total' 
+                     ? recurringEntries 
+                     : recurringEntries.filter(e => e.owner === incomeExpenseOwnerTab)} 
+                   type="EXPENSE" 
+                   privacy={isPrivacyMode} 
+                 />
                </Card>
 
                {/* Recurring Expense Entries */}
@@ -438,36 +542,49 @@ const AuthenticatedApp: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
                      <Plus size={16} /> Hinzufügen
                    </Button>
                  </div>
-                 {expenseEntries.length === 0 ? (
-                   <p className="text-slate-400 text-center py-8">Keine Einträge vorhanden. Füge deine erste Ausgabe hinzu.</p>
-                 ) : (
-                   <div className="space-y-2">
-                     {recurringEntries.filter(e => e.type === 'EXPENSE').map(entry => (
-                       <div key={entry.id} className={`flex items-center justify-between p-4 rounded-lg ${entry.isActive ? 'bg-slate-800' : 'bg-slate-800/50 opacity-60'}`}>
-                         <div className="flex items-center gap-4">
-                           <div className={`w-2 h-2 rounded-full ${entry.isActive ? 'bg-red-400' : 'bg-slate-500'}`} />
-                           <div>
-                             <p className="text-white font-medium">{entry.name}</p>
-                             <p className="text-xs text-slate-500">{entry.category} • {entry.frequency === 'MONTHLY' ? 'Monatlich' : entry.frequency === 'YEARLY' ? 'Jährlich' : 'Wöchentlich'}</p>
+                 {(() => {
+                   const filteredExpense = recurringEntries.filter(e => 
+                     e.type === 'EXPENSE' && 
+                     (incomeExpenseOwnerTab === 'Total' || e.owner === incomeExpenseOwnerTab)
+                   );
+                   return filteredExpense.length === 0 ? (
+                     <p className="text-slate-400 text-center py-8">Keine Einträge vorhanden. Füge deine erste Ausgabe hinzu.</p>
+                   ) : (
+                     <div className="space-y-2">
+                       {filteredExpense.map(entry => (
+                         <div key={entry.id} className={`flex items-center justify-between p-4 rounded-lg ${entry.isActive ? 'bg-slate-800' : 'bg-slate-800/50 opacity-60'}`}>
+                           <div className="flex items-center gap-4">
+                             <div className={`w-2 h-2 rounded-full ${entry.isActive ? 'bg-red-400' : 'bg-slate-500'}`} />
+                             <div>
+                               <p className="text-white font-medium">{entry.name}</p>
+                               <p className="text-xs text-slate-500">
+                                 {entry.category} • {entry.frequency === 'MONTHLY' ? 'Monatlich' : entry.frequency === 'YEARLY' ? 'Jährlich' : 'Wöchentlich'}
+                                 {incomeExpenseOwnerTab === 'Total' && entry.owner && (
+                                   <span className={`ml-2 px-1.5 py-0.5 rounded text-[10px] ${entry.owner === PortfolioOwner.ME ? 'bg-indigo-500/20 text-indigo-300' : 'bg-pink-500/20 text-pink-300'}`}>
+                                     {entry.owner === PortfolioOwner.ME ? 'Ich' : 'Carolina'}
+                                   </span>
+                                 )}
+                               </p>
+                             </div>
+                           </div>
+                           <div className="flex items-center gap-4">
+                             <p className="text-red-400 font-bold">
+                               <Money value={entry.amount} privacy={isPrivacyMode} />
+                             </p>
+                             <div className="flex gap-1">
+                               <button onClick={() => { setEditingEntry(entry); setEntryType('EXPENSE'); setIsAddEntryModalOpen(true); }} className="p-2 hover:bg-slate-700 rounded-lg text-slate-400 hover:text-white">
+                                 <Edit2 size={16} />
+                               </button>
+                               <button onClick={() => handleDeleteEntry(entry.id)} className="p-2 hover:bg-slate-700 rounded-lg text-slate-400 hover:text-red-400">
+                                 <Trash2 size={16} />
+                               </button>
+                             </div>
                            </div>
                          </div>
-                         <div className="flex items-center gap-4">
-                           <p className="text-red-400 font-bold">
-                             <Money value={entry.amount} privacy={isPrivacyMode} />
-                           </p>
-                           <div className="flex gap-1">
-                             <button onClick={() => { setEditingEntry(entry); setEntryType('EXPENSE'); setIsAddEntryModalOpen(true); }} className="p-2 hover:bg-slate-700 rounded-lg text-slate-400 hover:text-white">
-                               <Edit2 size={16} />
-                             </button>
-                             <button onClick={() => handleDeleteEntry(entry.id)} className="p-2 hover:bg-slate-700 rounded-lg text-slate-400 hover:text-red-400">
-                               <Trash2 size={16} />
-                             </button>
-                           </div>
-                         </div>
-                       </div>
-                     ))}
-                   </div>
-                 )}
+                       ))}
+                     </div>
+                   );
+                 })()}
                </Card>
             </div>
           )}
@@ -547,6 +664,7 @@ const RecurringEntryModal: React.FC<{
   const [amount, setAmount] = useState(initialData?.amount?.toString() || '');
   const [category, setCategory] = useState(initialData?.category || 'Sonstiges');
   const [frequency, setFrequency] = useState<'MONTHLY' | 'YEARLY' | 'WEEKLY'>(initialData?.frequency || 'MONTHLY');
+  const [owner, setOwner] = useState<PortfolioOwner>(initialData?.owner || PortfolioOwner.ME);
   const [isActive, setIsActive] = useState(initialData?.isActive !== undefined ? initialData.isActive : true);
   const [notes, setNotes] = useState(initialData?.notes || '');
 
@@ -559,6 +677,7 @@ const RecurringEntryModal: React.FC<{
       type: initialData?.type || type,
       category,
       frequency,
+      owner,
       isActive,
       notes,
     });
@@ -616,6 +735,26 @@ const RecurringEntryModal: React.FC<{
                   {f === 'WEEKLY' ? 'Wöchentlich' : f === 'MONTHLY' ? 'Monatlich' : 'Jährlich'}
                 </button>
               ))}
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm text-slate-400 mb-1">Besitzer</label>
+            <div className="flex bg-darker p-1 rounded-lg border border-slate-700">
+              <button 
+                type="button"
+                onClick={() => setOwner(PortfolioOwner.ME)}
+                className={`flex-1 py-2 rounded-md text-sm font-medium transition-colors ${owner === PortfolioOwner.ME ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}
+              >
+                Ich
+              </button>
+              <button 
+                type="button"
+                onClick={() => setOwner(PortfolioOwner.CAROLINA)}
+                className={`flex-1 py-2 rounded-md text-sm font-medium transition-colors ${owner === PortfolioOwner.CAROLINA ? 'bg-pink-600 text-white' : 'text-slate-400 hover:text-white'}`}
+              >
+                Carolina
+              </button>
             </div>
           </div>
 
