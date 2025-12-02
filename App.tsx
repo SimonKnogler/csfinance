@@ -202,6 +202,7 @@ const AuthenticatedApp: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
         type: entry.type || entryType,
         category: entry.category || 'Sonstiges',
         frequency: entry.frequency || 'MONTHLY',
+        owner: entry.owner || PortfolioOwner.ME,
         isActive: entry.isActive !== undefined ? entry.isActive : true,
         notes: entry.notes || '',
       };
