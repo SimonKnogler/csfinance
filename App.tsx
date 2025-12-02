@@ -43,6 +43,45 @@ const BUDGET_CATEGORIES = [
   'Transport', 'Abos', 'Freizeit', 'Kleidung', 'Gesundheit', 'Sonstiges'
 ];
 
+// Color mapping for income categories
+const INCOME_CATEGORY_COLORS: Record<string, string> = {
+  'Gehalt': 'bg-blue-500/20 text-blue-300 border-blue-500/30',
+  'Freelance': 'bg-purple-500/20 text-purple-300 border-purple-500/30',
+  'Dividenden': 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
+  'Mieteinnahmen': 'bg-teal-500/20 text-teal-300 border-teal-500/30',
+  'Sonstiges Einkommen': 'bg-slate-500/20 text-slate-300 border-slate-500/30',
+};
+
+// Color mapping for expense categories
+const EXPENSE_CATEGORY_COLORS: Record<string, string> = {
+  'Miete': 'bg-amber-500/20 text-amber-300 border-amber-500/30',
+  'Strom/Gas': 'bg-yellow-500/20 text-yellow-300 border-yellow-500/30',
+  'Internet': 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30',
+  'Versicherungen': 'bg-blue-500/20 text-blue-300 border-blue-500/30',
+  'Lebensmittel': 'bg-green-500/20 text-green-300 border-green-500/30',
+  'Transport': 'bg-orange-500/20 text-orange-300 border-orange-500/30',
+  'Abos': 'bg-pink-500/20 text-pink-300 border-pink-500/30',
+  'Freizeit': 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30',
+  'Kleidung': 'bg-fuchsia-500/20 text-fuchsia-300 border-fuchsia-500/30',
+  'Gesundheit': 'bg-red-500/20 text-red-300 border-red-500/30',
+  'Sonstiges': 'bg-slate-500/20 text-slate-300 border-slate-500/30',
+};
+
+// Get color class for category badge
+const getCategoryColor = (category: string, type: 'INCOME' | 'EXPENSE'): string => {
+  const colorMap = type === 'INCOME' ? INCOME_CATEGORY_COLORS : EXPENSE_CATEGORY_COLORS;
+  return colorMap[category] || 'bg-slate-500/20 text-slate-300 border-slate-500/30';
+};
+
+// Get background color for category indicator dot
+const getCategoryDotColor = (category: string, type: 'INCOME' | 'EXPENSE'): string => {
+  const colorMap = type === 'INCOME' ? INCOME_CATEGORY_COLORS : EXPENSE_CATEGORY_COLORS;
+  const colorClass = colorMap[category] || 'bg-slate-500/20 text-slate-300 border-slate-500/30';
+  // Extract the background color class (first class in the string)
+  const bgClass = colorClass.split(' ')[0];
+  return bgClass.replace('/20', '') || 'bg-slate-500';
+};
+
 enum View {
   NET_WORTH = 'net-worth',
   PORTFOLIO = 'portfolio',
@@ -464,17 +503,22 @@ const AuthenticatedApp: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
                        {filteredIncome.map(entry => (
                          <div key={entry.id} className={`flex items-center justify-between p-4 rounded-lg ${entry.isActive ? 'bg-slate-800' : 'bg-slate-800/50 opacity-60'}`}>
                            <div className="flex items-center gap-4">
-                             <div className={`w-2 h-2 rounded-full ${entry.isActive ? 'bg-emerald-400' : 'bg-slate-500'}`} />
+                             <div className={`w-3 h-3 rounded-full border ${entry.isActive ? getCategoryDotColor(entry.category, 'INCOME') + ' border-current' : 'bg-slate-500 border-slate-600'}`} />
                              <div>
                                <p className="text-white font-medium">{entry.name}</p>
-                               <p className="text-xs text-slate-500">
-                                 {entry.category} • {entry.frequency === 'MONTHLY' ? 'Monatlich' : entry.frequency === 'YEARLY' ? 'Jährlich' : 'Wöchentlich'}
+                               <div className="flex items-center gap-2 mt-1">
+                                 <span className={`px-2 py-0.5 rounded text-[10px] font-medium border ${getCategoryColor(entry.category, 'INCOME')}`}>
+                                   {entry.category}
+                                 </span>
+                                 <span className="text-xs text-slate-500">
+                                   {entry.frequency === 'MONTHLY' ? 'Monatlich' : entry.frequency === 'YEARLY' ? 'Jährlich' : 'Wöchentlich'}
+                                 </span>
                                  {incomeExpenseOwnerTab === 'Total' && entry.owner && (
-                                   <span className={`ml-2 px-1.5 py-0.5 rounded text-[10px] ${entry.owner === PortfolioOwner.ME ? 'bg-indigo-500/20 text-indigo-300' : 'bg-pink-500/20 text-pink-300'}`}>
+                                   <span className={`px-1.5 py-0.5 rounded text-[10px] ${entry.owner === PortfolioOwner.ME ? 'bg-indigo-500/20 text-indigo-300' : 'bg-pink-500/20 text-pink-300'}`}>
                                      {entry.owner === PortfolioOwner.ME ? 'Ich' : 'Carolina'}
                                    </span>
                                  )}
-                               </p>
+                               </div>
                              </div>
                            </div>
                            <div className="flex items-center gap-4">
@@ -555,17 +599,22 @@ const AuthenticatedApp: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
                        {filteredExpense.map(entry => (
                          <div key={entry.id} className={`flex items-center justify-between p-4 rounded-lg ${entry.isActive ? 'bg-slate-800' : 'bg-slate-800/50 opacity-60'}`}>
                            <div className="flex items-center gap-4">
-                             <div className={`w-2 h-2 rounded-full ${entry.isActive ? 'bg-red-400' : 'bg-slate-500'}`} />
+                             <div className={`w-3 h-3 rounded-full border ${entry.isActive ? getCategoryDotColor(entry.category, 'EXPENSE') + ' border-current' : 'bg-slate-500 border-slate-600'}`} />
                              <div>
                                <p className="text-white font-medium">{entry.name}</p>
-                               <p className="text-xs text-slate-500">
-                                 {entry.category} • {entry.frequency === 'MONTHLY' ? 'Monatlich' : entry.frequency === 'YEARLY' ? 'Jährlich' : 'Wöchentlich'}
+                               <div className="flex items-center gap-2 mt-1">
+                                 <span className={`px-2 py-0.5 rounded text-[10px] font-medium border ${getCategoryColor(entry.category, 'EXPENSE')}`}>
+                                   {entry.category}
+                                 </span>
+                                 <span className="text-xs text-slate-500">
+                                   {entry.frequency === 'MONTHLY' ? 'Monatlich' : entry.frequency === 'YEARLY' ? 'Jährlich' : 'Wöchentlich'}
+                                 </span>
                                  {incomeExpenseOwnerTab === 'Total' && entry.owner && (
-                                   <span className={`ml-2 px-1.5 py-0.5 rounded text-[10px] ${entry.owner === PortfolioOwner.ME ? 'bg-indigo-500/20 text-indigo-300' : 'bg-pink-500/20 text-pink-300'}`}>
+                                   <span className={`px-1.5 py-0.5 rounded text-[10px] ${entry.owner === PortfolioOwner.ME ? 'bg-indigo-500/20 text-indigo-300' : 'bg-pink-500/20 text-pink-300'}`}>
                                      {entry.owner === PortfolioOwner.ME ? 'Ich' : 'Carolina'}
                                    </span>
                                  )}
-                               </p>
+                               </div>
                              </div>
                            </div>
                            <div className="flex items-center gap-4">
