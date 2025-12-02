@@ -218,17 +218,27 @@ export const StorageService = {
      const localPromises = docs.map(d => IDBService.put('documents', d));
      await Promise.all(localPromises);
 
-     // Cloud Sync for Documents (Filtered)
+     // Cloud Sync for Documents
      if (CloudService.getConfig()) {
-         // Skip documents > 800KB to avoid hitting Firestore document size limits (1MB)
-         // In a real production app, we would use Firebase Storage, not Firestore, for files.
-         const safeDocs = docs.filter(d => d.data && d.data.length < 800000); 
+         // Documents with fileUrl (Firebase Storage) can be synced as metadata only
+         // Documents with data (base64) need size filtering for Firestore limits
+         const safeDocs = docs.map(d => {
+           // If document uses Firebase Storage, sync metadata only (no base64 data)
+           if (d.fileUrl) {
+             const { data, ...metadataOnly } = d;
+             return metadataOnly;
+           }
+           // For local-only docs with base64, only sync if small enough
+           if (d.data && d.data.length < 800000) {
+             return d;
+           }
+           // Skip large base64 docs
+           return null;
+         }).filter((d): d is PortfolioDocument => d !== null);
          
          if (safeDocs.length > 0) {
              CloudService.saveAll('documents', safeDocs)
                  .catch(e => console.error("Cloud doc sync failed:", e));
-         } else if (docs.length > 0) {
-             console.warn("Documents skipped cloud sync due to size limits (Local Only)");
          }
      }
   },
