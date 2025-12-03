@@ -2089,14 +2089,30 @@ const PurchaseAnalyzer: React.FC<{
   // Purchase Analysis State
   const [purchasePrice, setPurchasePrice] = useState(500000); // Bei Neubau = Baukosten
   const [grundstueckswert, setGrundstueckswert] = useState(150000); // Wert des bereits vorhandenen Grundstücks
+  const [eigenleistung, setEigenleistung] = useState(50000); // Eigenleistung (spart Kosten)
   const [bundesland, setBundesland] = useState('Bayern');
   const [maklerProvision, setMaklerProvision] = useState(3.57);
+  
+  // Marktwert-Berechnung (für Neubau)
+  const [anzahlWohnungen, setAnzahlWohnungen] = useState(6);
+  const [wertProWohnung, setWertProWohnung] = useState(500000);
+  const [useManualMarktwert, setUseManualMarktwert] = useState(false);
+  const [manualMarktwert, setManualMarktwert] = useState(3000000);
+  
+  // Mieteinnahmen
   const [monthlyRent, setMonthlyRent] = useState(1500);
   const [monthlyExpenses, setMonthlyExpenses] = useState(400);
   const [eigenkapital, setEigenkapital] = useState(100000);
   const [zinssatz, setZinssatz] = useState(3.5);
   const [tilgung, setTilgung] = useState(2.0);
   const [zinsbindung, setZinsbindung] = useState(15);
+  
+  // Berechneter Marktwert
+  const marktwert = useMemo(() => {
+    if (mode === 'kauf') return purchasePrice; // Bei Kauf = Kaufpreis
+    if (useManualMarktwert) return manualMarktwert;
+    return anzahlWohnungen * wertProWohnung;
+  }, [mode, useManualMarktwert, manualMarktwert, anzahlWohnungen, wertProWohnung, purchasePrice]);
 
   // Kaufnebenkosten calculation - unterschiedlich je nach Modus
   const kaufnebenkosten = useMemo(() => {
@@ -2121,16 +2137,31 @@ const PurchaseAnalyzer: React.FC<{
 
   // Total investment & financing
   const finanzierung = useMemo(() => {
-    // Bei Neubau: Nur Baukosten + Nebenkosten finanzieren (Grund ist ja schon da)
-    const finanzierungsbedarf = purchasePrice + kaufnebenkosten.total;
-    // Gesamtwert des Objekts inkl. bereits vorhandenem Grundstück
-    const gesamtkosten = mode === 'neubau' 
-      ? purchasePrice + kaufnebenkosten.total + grundstueckswert 
+    // Bei Neubau: Baukosten abzüglich Eigenleistung + Nebenkosten
+    const effektiveBaukosten = mode === 'neubau' ? Math.max(0, purchasePrice - eigenleistung) : purchasePrice;
+    const finanzierungsbedarf = effektiveBaukosten + kaufnebenkosten.total;
+    
+    // Gesamtinvestition (was tatsächlich reingesteckt wird)
+    const gesamtinvestition = mode === 'neubau' 
+      ? effektiveBaukosten + kaufnebenkosten.total + grundstueckswert 
       : purchasePrice + kaufnebenkosten.total;
-    // Bei Neubau: Grundstück zählt als vorhandenes Eigenkapital
-    const effektivesEigenkapital = mode === 'neubau' ? eigenkapital + grundstueckswert : eigenkapital;
+    
+    // Bei Neubau: Grundstück + Eigenleistung zählen als Eigenkapital
+    const effektivesEigenkapital = mode === 'neubau' 
+      ? eigenkapital + grundstueckswert + eigenleistung 
+      : eigenkapital;
+    
     const fremdkapital = Math.max(0, finanzierungsbedarf - eigenkapital);
-    const eigenkapitalQuote = (effektivesEigenkapital / gesamtkosten) * 100;
+    
+    // Eigenkapitalquote bezogen auf Marktwert (realistischer)
+    const eigenkapitalQuoteInvestition = (effektivesEigenkapital / gesamtinvestition) * 100;
+    const eigenkapitalQuoteMarktwert = (effektivesEigenkapital / marktwert) * 100;
+    
+    // Wertsteigerung durch Bau
+    const wertsteigerung = mode === 'neubau' ? marktwert - gesamtinvestition : 0;
+    const wertsteigerungProzent = mode === 'neubau' && gesamtinvestition > 0 
+      ? (wertsteigerung / gesamtinvestition) * 100 
+      : 0;
     const monatlicheRate = fremdkapital * ((zinssatz + tilgung) / 100 / 12);
     const jahresRate = monatlicheRate * 12;
     
@@ -2159,30 +2190,43 @@ const PurchaseAnalyzer: React.FC<{
     }
     
     return {
-      gesamtkosten,
+      gesamtinvestition,
       finanzierungsbedarf,
+      effektiveBaukosten,
       fremdkapital,
-      eigenkapitalQuote,
+      eigenkapitalQuoteInvestition,
+      eigenkapitalQuoteMarktwert,
       effektivesEigenkapital,
+      wertsteigerung,
+      wertsteigerungProzent,
       monatlicheRate,
       jahresRate,
       yearsToPayoff,
       remainingAtEnd: Math.max(0, remainingAtEnd),
     };
-  }, [purchasePrice, kaufnebenkosten.total, eigenkapital, zinssatz, tilgung, zinsbindung, mode, grundstueckswert]);
+  }, [purchasePrice, kaufnebenkosten.total, eigenkapital, zinssatz, tilgung, zinsbindung, mode, grundstueckswert, eigenleistung, marktwert]);
 
   // Rendite calculations
   const rendite = useMemo(() => {
     const jahresmiete = monthlyRent * 12;
     const jahresExpenses = monthlyExpenses * 12;
-    // Bei Neubau: Gesamtwert = Baukosten + Grundstück
-    const gesamtwert = mode === 'neubau' ? purchasePrice + grundstueckswert : purchasePrice;
-    const bruttomietrendite = (jahresmiete / gesamtwert) * 100;
-    const nettomietrendite = ((jahresmiete - jahresExpenses) / gesamtwert) * 100;
     
-    // Eigenkapitalrendite (ROE)
+    // Mietrendite bezogen auf Marktwert (realistisch)
+    const bruttomietrenditeMarktwert = (jahresmiete / marktwert) * 100;
+    const nettomietrenditeMarktwert = ((jahresmiete - jahresExpenses) / marktwert) * 100;
+    
+    // Mietrendite bezogen auf Investment (was reingesteckt wurde)
+    const bruttomietrenditeInvestition = (jahresmiete / finanzierung.gesamtinvestition) * 100;
+    const nettomietrenditeInvestition = ((jahresmiete - jahresExpenses) / finanzierung.gesamtinvestition) * 100;
+    
+    // Eigenkapitalrendite (ROE) - Cashflow bezogen auf eingesetztes Eigenkapital
     const nettoEinkommen = jahresmiete - jahresExpenses - finanzierung.jahresRate;
-    const eigenkapitalRendite = (nettoEinkommen / eigenkapital) * 100;
+    const eigenkapitalRendite = eigenkapital > 0 ? (nettoEinkommen / eigenkapital) * 100 : 0;
+    
+    // Gesamtrendite inkl. Wertsteigerung (für Jahr 1)
+    const gesamtrenditeJahr1 = eigenkapital > 0 
+      ? ((nettoEinkommen + finanzierung.wertsteigerung) / eigenkapital) * 100 
+      : 0;
     
     // Cashflow
     const monthlyCashflow = monthlyRent - monthlyExpenses - finanzierung.monatlicheRate;
@@ -2194,16 +2238,23 @@ const PurchaseAnalyzer: React.FC<{
     const etfReturn = eigenkapital * 0.07;
     const realEstateReturn = nettoEinkommen;
     
+    // Mietmultiplikator (Kaufpreis/Jahresmiete)
+    const mietmultiplikator = jahresmiete > 0 ? marktwert / jahresmiete : 0;
+    
     return {
-      bruttomietrendite,
-      nettomietrendite,
+      bruttomietrenditeMarktwert,
+      nettomietrenditeMarktwert,
+      bruttomietrenditeInvestition,
+      nettomietrenditeInvestition,
       eigenkapitalRendite,
+      gesamtrenditeJahr1,
       monthlyCashflow,
       breakEvenRent,
       etfReturn,
       realEstateReturn,
+      mietmultiplikator,
     };
-  }, [monthlyRent, monthlyExpenses, purchasePrice, eigenkapital, finanzierung, mode, grundstueckswert]);
+  }, [monthlyRent, monthlyExpenses, marktwert, eigenkapital, finanzierung]);
 
   // Financing term comparison
   const finanzierungsVergleich = useMemo(() => {
@@ -2292,15 +2343,26 @@ const PurchaseAnalyzer: React.FC<{
               )}
             </div>
             {mode === 'neubau' && (
-              <div>
-                <label className="block text-sm text-slate-400 mb-1">Grundstückswert (€)</label>
-                <Input
-                  type="number"
-                  value={grundstueckswert}
-                  onChange={(e) => setGrundstueckswert(Number(e.target.value))}
-                />
-                <p className="text-xs text-slate-500 mt-1">Aktueller Verkehrswert des vorhandenen Grundstücks</p>
-              </div>
+              <>
+                <div>
+                  <label className="block text-sm text-slate-400 mb-1">Eigenleistung (€)</label>
+                  <Input
+                    type="number"
+                    value={eigenleistung}
+                    onChange={(e) => setEigenleistung(Number(e.target.value))}
+                  />
+                  <p className="text-xs text-slate-500 mt-1">Selbst ausgeführte Arbeiten (spart Kosten)</p>
+                </div>
+                <div>
+                  <label className="block text-sm text-slate-400 mb-1">Grundstückswert (€)</label>
+                  <Input
+                    type="number"
+                    value={grundstueckswert}
+                    onChange={(e) => setGrundstueckswert(Number(e.target.value))}
+                  />
+                  <p className="text-xs text-slate-500 mt-1">Aktueller Verkehrswert des vorhandenen Grundstücks</p>
+                </div>
+              </>
             )}
             {mode === 'kauf' && (
               <>
@@ -2399,6 +2461,92 @@ const PurchaseAnalyzer: React.FC<{
         </Card>
       </div>
 
+      {/* Marktwert-Berechnung (nur bei Neubau) */}
+      {mode === 'neubau' && (
+        <Card className="bg-gradient-to-r from-emerald-900/20 to-teal-900/20 border-emerald-500/30">
+          <h4 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+            <TrendingUp size={18} className="text-emerald-400" /> Marktwert-Berechnung
+          </h4>
+          <p className="text-slate-400 text-sm mb-4">
+            Der Marktwert ist oft deutlich höher als die Baukosten - besonders bei Mehrfamilienhäusern in guter Lage.
+          </p>
+          
+          <div className="flex items-center gap-4 mb-4">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="radio"
+                checked={!useManualMarktwert}
+                onChange={() => setUseManualMarktwert(false)}
+                className="w-4 h-4 text-emerald-500 border-slate-600 bg-slate-800 focus:ring-emerald-500"
+              />
+              <span className="text-slate-300">Nach Wohneinheiten berechnen</span>
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="radio"
+                checked={useManualMarktwert}
+                onChange={() => setUseManualMarktwert(true)}
+                className="w-4 h-4 text-emerald-500 border-slate-600 bg-slate-800 focus:ring-emerald-500"
+              />
+              <span className="text-slate-300">Manuell eingeben</span>
+            </label>
+          </div>
+
+          {useManualMarktwert ? (
+            <div>
+              <label className="block text-sm text-slate-400 mb-1">Geschätzter Marktwert (€)</label>
+              <Input
+                type="number"
+                value={manualMarktwert}
+                onChange={(e) => setManualMarktwert(Number(e.target.value))}
+              />
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm text-slate-400 mb-1">Anzahl Wohnungen</label>
+                <Input
+                  type="number"
+                  value={anzahlWohnungen}
+                  onChange={(e) => setAnzahlWohnungen(Number(e.target.value))}
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-slate-400 mb-1">Wert pro Wohnung (€)</label>
+                <Input
+                  type="number"
+                  value={wertProWohnung}
+                  onChange={(e) => setWertProWohnung(Number(e.target.value))}
+                />
+                <p className="text-xs text-slate-500 mt-1">Basierend auf Lage (z.B. Rosenheim, gute Nachbarschaft)</p>
+              </div>
+            </div>
+          )}
+
+          <div className="mt-4 p-4 bg-slate-800/50 rounded-lg">
+            <div className="flex justify-between items-center">
+              <span className="text-slate-400">Geschätzter Marktwert</span>
+              <span className="text-3xl font-bold text-emerald-400">
+                <Money value={marktwert} privacy={privacy} fractionDigits={0} />
+              </span>
+            </div>
+            {finanzierung.wertsteigerung > 0 && (
+              <div className="mt-3 pt-3 border-t border-slate-700 flex justify-between items-center">
+                <span className="text-slate-400">Wertsteigerung durch Bau</span>
+                <div className="text-right">
+                  <span className="text-xl font-bold text-emerald-400">
+                    +<Money value={finanzierung.wertsteigerung} privacy={privacy} fractionDigits={0} />
+                  </span>
+                  <span className="text-emerald-400 text-sm ml-2">
+                    (+{finanzierung.wertsteigerungProzent.toFixed(0)}%)
+                  </span>
+                </div>
+              </div>
+            )}
+          </div>
+        </Card>
+      )}
+
       {/* Results Section */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Kaufnebenkosten Breakdown */}
@@ -2414,10 +2562,20 @@ const PurchaseAnalyzer: React.FC<{
                   <span className="text-emerald-400 font-medium"><Money value={grundstueckswert} privacy={privacy} /></span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-slate-400">Baukosten</span>
+                  <span className="text-slate-400">Baukosten (brutto)</span>
                   <span className="text-white font-medium"><Money value={purchasePrice} privacy={privacy} /></span>
                 </div>
+                {eigenleistung > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">- Eigenleistung (spart)</span>
+                    <span className="text-emerald-400 font-medium">-<Money value={eigenleistung} privacy={privacy} /></span>
+                  </div>
+                )}
                 <div className="flex justify-between">
+                  <span className="text-slate-400">= Effektive Baukosten</span>
+                  <span className="text-white font-medium"><Money value={finanzierung.effektiveBaukosten} privacy={privacy} /></span>
+                </div>
+                <div className="flex justify-between mt-2">
                   <span className="text-slate-400">Notar (Grundschuld ~1%)</span>
                   <span className="text-red-400"><Money value={kaufnebenkosten.notar} privacy={privacy} /></span>
                 </div>
@@ -2467,15 +2625,27 @@ const PurchaseAnalyzer: React.FC<{
               <span className="text-red-400 font-bold"><Money value={kaufnebenkosten.total} privacy={privacy} /></span>
             </div>
             {mode === 'neubau' && (
-              <div className="flex justify-between">
-                <span className="text-slate-400">Finanzierungsbedarf</span>
-                <span className="text-amber-400 font-medium"><Money value={finanzierung.finanzierungsbedarf} privacy={privacy} /></span>
+              <>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Finanzierungsbedarf</span>
+                  <span className="text-amber-400 font-medium"><Money value={finanzierung.finanzierungsbedarf} privacy={privacy} /></span>
+                </div>
+                <div className="flex justify-between bg-slate-800 p-3 rounded-lg">
+                  <span className="text-white font-semibold">Gesamtinvestition</span>
+                  <span className="text-white font-bold text-lg"><Money value={finanzierung.gesamtinvestition} privacy={privacy} /></span>
+                </div>
+                <div className="flex justify-between bg-emerald-900/30 p-3 rounded-lg border border-emerald-500/30">
+                  <span className="text-emerald-300 font-semibold">Marktwert nach Fertigstellung</span>
+                  <span className="text-emerald-400 font-bold text-lg"><Money value={marktwert} privacy={privacy} /></span>
+                </div>
+              </>
+            )}
+            {mode === 'kauf' && (
+              <div className="flex justify-between bg-slate-800 p-3 rounded-lg">
+                <span className="text-white font-semibold">Gesamtinvestition</span>
+                <span className="text-white font-bold text-lg"><Money value={finanzierung.gesamtinvestition} privacy={privacy} /></span>
               </div>
             )}
-            <div className="flex justify-between bg-slate-800 p-3 rounded-lg">
-              <span className="text-white font-semibold">Gesamtwert Immobilie</span>
-              <span className="text-white font-bold text-lg"><Money value={finanzierung.gesamtkosten} privacy={privacy} /></span>
-            </div>
           </div>
         </Card>
 
@@ -2489,6 +2659,12 @@ const PurchaseAnalyzer: React.FC<{
                   <span className="text-slate-400">Grundstück (vorhanden)</span>
                   <span className="text-emerald-400 font-medium"><Money value={grundstueckswert} privacy={privacy} /></span>
                 </div>
+                {eigenleistung > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">+ Eigenleistung</span>
+                    <span className="text-emerald-400 font-medium"><Money value={eigenleistung} privacy={privacy} /></span>
+                  </div>
+                )}
                 <div className="flex justify-between">
                   <span className="text-slate-400">+ Bares Eigenkapital</span>
                   <span className="text-emerald-400 font-medium"><Money value={eigenkapital} privacy={privacy} /></span>
@@ -2509,11 +2685,19 @@ const PurchaseAnalyzer: React.FC<{
               <span className="text-amber-400 font-medium"><Money value={finanzierung.fremdkapital} privacy={privacy} /></span>
             </div>
             <div className="flex justify-between">
-              <span className="text-slate-400">Eigenkapitalquote</span>
-              <span className={`font-medium ${finanzierung.eigenkapitalQuote >= 20 ? 'text-emerald-400' : 'text-red-400'}`}>
-                {finanzierung.eigenkapitalQuote.toFixed(1)}%
+              <span className="text-slate-400">EK-Quote (Investition)</span>
+              <span className={`font-medium ${finanzierung.eigenkapitalQuoteInvestition >= 20 ? 'text-emerald-400' : 'text-red-400'}`}>
+                {finanzierung.eigenkapitalQuoteInvestition.toFixed(1)}%
               </span>
             </div>
+            {mode === 'neubau' && (
+              <div className="flex justify-between">
+                <span className="text-slate-400">EK-Quote (Marktwert)</span>
+                <span className="text-emerald-400 font-medium">
+                  {finanzierung.eigenkapitalQuoteMarktwert.toFixed(1)}%
+                </span>
+              </div>
+            )}
             <div className="border-t border-slate-700 pt-3 flex justify-between">
               <span className="text-white font-semibold">Monatliche Rate</span>
               <span className="text-white font-bold"><Money value={finanzierung.monatlicheRate} privacy={privacy} /></span>
@@ -2533,25 +2717,68 @@ const PurchaseAnalyzer: React.FC<{
       {/* Rendite Kennzahlen */}
       <Card>
         <h4 className="text-lg font-semibold text-white mb-4">Rendite-Kennzahlen</h4>
+        
+        {/* Wertsteigerung Highlight (nur bei Neubau) */}
+        {mode === 'neubau' && finanzierung.wertsteigerung > 0 && (
+          <div className="mb-4 p-4 bg-gradient-to-r from-emerald-900/30 to-teal-900/30 rounded-lg border border-emerald-500/30">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-emerald-300 font-semibold">Wertsteigerung durch Bau</p>
+                <p className="text-slate-400 text-sm">Marktwert vs. Investition</p>
+              </div>
+              <div className="text-right">
+                <p className="text-3xl font-bold text-emerald-400">
+                  +<Money value={finanzierung.wertsteigerung} privacy={privacy} fractionDigits={0} />
+                </p>
+                <p className="text-emerald-400 text-sm">+{finanzierung.wertsteigerungProzent.toFixed(0)}% Gewinn</p>
+              </div>
+            </div>
+          </div>
+        )}
+        
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
           <div className="bg-slate-800 p-4 rounded-lg text-center">
-            <p className="text-slate-400 text-xs uppercase mb-1">Bruttomietrendite</p>
-            <p className={`text-2xl font-bold ${rendite.bruttomietrendite >= 5 ? 'text-emerald-400' : 'text-amber-400'}`}>
-              {rendite.bruttomietrendite.toFixed(2)}%
+            <p className="text-slate-400 text-xs uppercase mb-1">
+              {mode === 'neubau' ? 'Bruttorendite (Invest.)' : 'Bruttomietrendite'}
             </p>
+            <p className={`text-2xl font-bold ${rendite.bruttomietrenditeInvestition >= 5 ? 'text-emerald-400' : 'text-amber-400'}`}>
+              {rendite.bruttomietrenditeInvestition.toFixed(2)}%
+            </p>
+            {mode === 'neubau' && (
+              <p className="text-xs text-slate-500 mt-1">
+                Marktwert: {rendite.bruttomietrenditeMarktwert.toFixed(2)}%
+              </p>
+            )}
           </div>
           <div className="bg-slate-800 p-4 rounded-lg text-center">
-            <p className="text-slate-400 text-xs uppercase mb-1">Nettomietrendite</p>
-            <p className={`text-2xl font-bold ${rendite.nettomietrendite >= 3 ? 'text-emerald-400' : 'text-amber-400'}`}>
-              {rendite.nettomietrendite.toFixed(2)}%
+            <p className="text-slate-400 text-xs uppercase mb-1">
+              {mode === 'neubau' ? 'Nettorendite (Invest.)' : 'Nettomietrendite'}
             </p>
+            <p className={`text-2xl font-bold ${rendite.nettomietrenditeInvestition >= 3 ? 'text-emerald-400' : 'text-amber-400'}`}>
+              {rendite.nettomietrenditeInvestition.toFixed(2)}%
+            </p>
+            {mode === 'neubau' && (
+              <p className="text-xs text-slate-500 mt-1">
+                Marktwert: {rendite.nettomietrenditeMarktwert.toFixed(2)}%
+              </p>
+            )}
           </div>
           <div className="bg-slate-800 p-4 rounded-lg text-center">
             <p className="text-slate-400 text-xs uppercase mb-1">Eigenkapitalrendite</p>
             <p className={`text-2xl font-bold ${rendite.eigenkapitalRendite >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
               {rendite.eigenkapitalRendite.toFixed(2)}%
             </p>
+            <p className="text-xs text-slate-500 mt-1">Cashflow / EK</p>
           </div>
+          {mode === 'neubau' && (
+            <div className="bg-gradient-to-br from-emerald-800/30 to-teal-800/30 p-4 rounded-lg text-center border border-emerald-500/30">
+              <p className="text-emerald-300 text-xs uppercase mb-1">Gesamtrendite Jahr 1</p>
+              <p className={`text-2xl font-bold text-emerald-400`}>
+                {rendite.gesamtrenditeJahr1.toFixed(0)}%
+              </p>
+              <p className="text-xs text-slate-400 mt-1">inkl. Wertsteigerung</p>
+            </div>
+          )}
           <div className="bg-slate-800 p-4 rounded-lg text-center">
             <p className="text-slate-400 text-xs uppercase mb-1">Monatl. Cashflow</p>
             <p className={`text-2xl font-bold ${rendite.monthlyCashflow >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
@@ -2559,15 +2786,16 @@ const PurchaseAnalyzer: React.FC<{
             </p>
           </div>
           <div className="bg-slate-800 p-4 rounded-lg text-center">
+            <p className="text-slate-400 text-xs uppercase mb-1">Mietmultiplikator</p>
+            <p className={`text-xl font-bold ${rendite.mietmultiplikator <= 20 ? 'text-emerald-400' : rendite.mietmultiplikator <= 25 ? 'text-amber-400' : 'text-red-400'}`}>
+              {rendite.mietmultiplikator.toFixed(1)}x
+            </p>
+            <p className="text-xs text-slate-500 mt-1">{"<"}20 = gut</p>
+          </div>
+          <div className="bg-slate-800 p-4 rounded-lg text-center">
             <p className="text-slate-400 text-xs uppercase mb-1">Break-Even Miete</p>
             <p className="text-xl font-bold text-white">
               <Money value={rendite.breakEvenRent} privacy={privacy} />
-            </p>
-          </div>
-          <div className="bg-slate-800 p-4 rounded-lg text-center">
-            <p className="text-slate-400 text-xs uppercase mb-1">vs. ETF (7%)</p>
-            <p className={`text-xl font-bold ${rendite.realEstateReturn > rendite.etfReturn ? 'text-emerald-400' : 'text-red-400'}`}>
-              {rendite.realEstateReturn > rendite.etfReturn ? '+' : ''}{((rendite.realEstateReturn - rendite.etfReturn) / 12).toFixed(0)}€/Mo
             </p>
           </div>
         </div>
