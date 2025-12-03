@@ -2077,12 +2077,18 @@ const GRUNDERWERBSTEUER: Record<string, number> = {
   'Thüringen': 5.0,
 };
 
+type PurchaseMode = 'kauf' | 'neubau';
+
 const PurchaseAnalyzer: React.FC<{
   properties: RealEstateProperty[];
   privacy: boolean;
 }> = ({ properties, privacy }) => {
+  // Mode: Kauf mit Grundstück vs. Neubau auf eigenem Grund
+  const [mode, setMode] = useState<PurchaseMode>('kauf');
+  
   // Purchase Analysis State
-  const [purchasePrice, setPurchasePrice] = useState(500000);
+  const [purchasePrice, setPurchasePrice] = useState(500000); // Bei Neubau = Baukosten
+  const [grundstueckswert, setGrundstueckswert] = useState(150000); // Wert des bereits vorhandenen Grundstücks
   const [bundesland, setBundesland] = useState('Bayern');
   const [maklerProvision, setMaklerProvision] = useState(3.57);
   const [monthlyRent, setMonthlyRent] = useState(1500);
@@ -2092,21 +2098,39 @@ const PurchaseAnalyzer: React.FC<{
   const [tilgung, setTilgung] = useState(2.0);
   const [zinsbindung, setZinsbindung] = useState(15);
 
-  // Kaufnebenkosten calculation
+  // Kaufnebenkosten calculation - unterschiedlich je nach Modus
   const kaufnebenkosten = useMemo(() => {
-    const grunderwerbsteuer = purchasePrice * (GRUNDERWERBSTEUER[bundesland] / 100);
-    const notar = purchasePrice * 0.015;
-    const grundbuch = purchasePrice * 0.005;
-    const makler = purchasePrice * (maklerProvision / 100);
-    const total = grunderwerbsteuer + notar + grundbuch + makler;
-    return { grunderwerbsteuer, notar, grundbuch, makler, total };
-  }, [purchasePrice, bundesland, maklerProvision]);
+    if (mode === 'neubau') {
+      // Bei Neubau auf eigenem Grund: keine Grunderwerbsteuer, kein Makler
+      // Nur Notar für Bauvertrag/Grundschuld und evtl. Baugenehmigung
+      const notar = purchasePrice * 0.01; // ~1% für Grundschuldbestellung
+      const grundbuch = purchasePrice * 0.003; // Geringer da nur Grundschuld
+      const baugenehmigung = 2000; // Pauschale
+      const total = notar + grundbuch + baugenehmigung;
+      return { grunderwerbsteuer: 0, notar, grundbuch, makler: 0, baugenehmigung, total };
+    } else {
+      // Normaler Kauf mit Grundstück
+      const grunderwerbsteuer = purchasePrice * (GRUNDERWERBSTEUER[bundesland] / 100);
+      const notar = purchasePrice * 0.015;
+      const grundbuch = purchasePrice * 0.005;
+      const makler = purchasePrice * (maklerProvision / 100);
+      const total = grunderwerbsteuer + notar + grundbuch + makler;
+      return { grunderwerbsteuer, notar, grundbuch, makler, baugenehmigung: 0, total };
+    }
+  }, [purchasePrice, bundesland, maklerProvision, mode]);
 
   // Total investment & financing
   const finanzierung = useMemo(() => {
-    const gesamtkosten = purchasePrice + kaufnebenkosten.total;
-    const fremdkapital = Math.max(0, gesamtkosten - eigenkapital);
-    const eigenkapitalQuote = (eigenkapital / gesamtkosten) * 100;
+    // Bei Neubau: Nur Baukosten + Nebenkosten finanzieren (Grund ist ja schon da)
+    const finanzierungsbedarf = purchasePrice + kaufnebenkosten.total;
+    // Gesamtwert des Objekts inkl. bereits vorhandenem Grundstück
+    const gesamtkosten = mode === 'neubau' 
+      ? purchasePrice + kaufnebenkosten.total + grundstueckswert 
+      : purchasePrice + kaufnebenkosten.total;
+    // Bei Neubau: Grundstück zählt als vorhandenes Eigenkapital
+    const effektivesEigenkapital = mode === 'neubau' ? eigenkapital + grundstueckswert : eigenkapital;
+    const fremdkapital = Math.max(0, finanzierungsbedarf - eigenkapital);
+    const eigenkapitalQuote = (effektivesEigenkapital / gesamtkosten) * 100;
     const monatlicheRate = fremdkapital * ((zinssatz + tilgung) / 100 / 12);
     const jahresRate = monatlicheRate * 12;
     
@@ -2136,21 +2160,25 @@ const PurchaseAnalyzer: React.FC<{
     
     return {
       gesamtkosten,
+      finanzierungsbedarf,
       fremdkapital,
       eigenkapitalQuote,
+      effektivesEigenkapital,
       monatlicheRate,
       jahresRate,
       yearsToPayoff,
       remainingAtEnd: Math.max(0, remainingAtEnd),
     };
-  }, [purchasePrice, kaufnebenkosten.total, eigenkapital, zinssatz, tilgung, zinsbindung]);
+  }, [purchasePrice, kaufnebenkosten.total, eigenkapital, zinssatz, tilgung, zinsbindung, mode, grundstueckswert]);
 
   // Rendite calculations
   const rendite = useMemo(() => {
     const jahresmiete = monthlyRent * 12;
     const jahresExpenses = monthlyExpenses * 12;
-    const bruttomietrendite = (jahresmiete / purchasePrice) * 100;
-    const nettomietrendite = ((jahresmiete - jahresExpenses) / purchasePrice) * 100;
+    // Bei Neubau: Gesamtwert = Baukosten + Grundstück
+    const gesamtwert = mode === 'neubau' ? purchasePrice + grundstueckswert : purchasePrice;
+    const bruttomietrendite = (jahresmiete / gesamtwert) * 100;
+    const nettomietrendite = ((jahresmiete - jahresExpenses) / gesamtwert) * 100;
     
     // Eigenkapitalrendite (ROE)
     const nettoEinkommen = jahresmiete - jahresExpenses - finanzierung.jahresRate;
@@ -2175,7 +2203,7 @@ const PurchaseAnalyzer: React.FC<{
       etfReturn,
       realEstateReturn,
     };
-  }, [monthlyRent, monthlyExpenses, purchasePrice, eigenkapital, finanzierung]);
+  }, [monthlyRent, monthlyExpenses, purchasePrice, eigenkapital, finanzierung, mode, grundstueckswert]);
 
   // Financing term comparison
   const finanzierungsVergleich = useMemo(() => {
@@ -2199,52 +2227,105 @@ const PurchaseAnalyzer: React.FC<{
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center gap-4 mb-6">
-        <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center">
-          <ShoppingCart size={24} className="text-white" />
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center gap-4">
+          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center">
+            <ShoppingCart size={24} className="text-white" />
+          </div>
+          <div>
+            <h3 className="text-xl font-bold text-white">Kaufanalyse</h3>
+            <p className="text-slate-400 text-sm">Kaufnebenkosten, Rendite & Finanzierung</p>
+          </div>
         </div>
-        <div>
-          <h3 className="text-xl font-bold text-white">Kaufanalyse</h3>
-          <p className="text-slate-400 text-sm">Kaufnebenkosten, Rendite & Finanzierung</p>
+        {/* Mode Toggle */}
+        <div className="flex bg-slate-800 p-1 rounded-lg border border-slate-700">
+          <button
+            onClick={() => setMode('kauf')}
+            className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+              mode === 'kauf' ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            Kauf mit Grundstück
+          </button>
+          <button
+            onClick={() => setMode('neubau')}
+            className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+              mode === 'neubau' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            Neubau auf eigenem Grund
+          </button>
         </div>
       </div>
 
+      {/* Info Box for Neubau Mode */}
+      {mode === 'neubau' && (
+        <div className="flex items-center gap-3 p-4 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-200 text-sm">
+          <HardHat size={20} className="flex-shrink-0" />
+          <p>
+            <strong>Neubau auf eigenem Grundstück:</strong> Da Sie das Grundstück bereits besitzen, entfallen Grunderwerbsteuer und Maklergebühren. 
+            Nur Notar für Grundschuldbestellung und Baugenehmigung werden berechnet.
+          </p>
+        </div>
+      )}
+
       {/* Input Section */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Kaufpreis & Nebenkosten */}
+        {/* Kaufpreis/Baukosten & Nebenkosten */}
         <Card>
           <h4 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-            <Building2 size={18} className="text-emerald-400" /> Kaufpreis & Nebenkosten
+            <Building2 size={18} className="text-emerald-400" /> 
+            {mode === 'neubau' ? 'Baukosten & Grundstück' : 'Kaufpreis & Nebenkosten'}
           </h4>
           <div className="space-y-4">
             <div>
-              <label className="block text-sm text-slate-400 mb-1">Kaufpreis (€)</label>
+              <label className="block text-sm text-slate-400 mb-1">
+                {mode === 'neubau' ? 'Baukosten (€)' : 'Kaufpreis (€)'}
+              </label>
               <Input
                 type="number"
                 value={purchasePrice}
                 onChange={(e) => setPurchasePrice(Number(e.target.value))}
               />
+              {mode === 'neubau' && (
+                <p className="text-xs text-slate-500 mt-1">Reine Baukosten ohne Grundstück</p>
+              )}
             </div>
-            <div>
-              <label className="block text-sm text-slate-400 mb-1">Bundesland</label>
-              <Select
-                value={bundesland}
-                onChange={(e) => setBundesland(e.target.value)}
-              >
-                {Object.keys(GRUNDERWERBSTEUER).map(state => (
-                  <option key={state} value={state}>{state} ({GRUNDERWERBSTEUER[state]}%)</option>
-                ))}
-              </Select>
-            </div>
-            <div>
-              <label className="block text-sm text-slate-400 mb-1">Maklerprovision (%)</label>
-              <Input
-                type="number"
-                step="0.01"
-                value={maklerProvision}
-                onChange={(e) => setMaklerProvision(Number(e.target.value))}
-              />
-            </div>
+            {mode === 'neubau' && (
+              <div>
+                <label className="block text-sm text-slate-400 mb-1">Grundstückswert (€)</label>
+                <Input
+                  type="number"
+                  value={grundstueckswert}
+                  onChange={(e) => setGrundstueckswert(Number(e.target.value))}
+                />
+                <p className="text-xs text-slate-500 mt-1">Aktueller Verkehrswert des vorhandenen Grundstücks</p>
+              </div>
+            )}
+            {mode === 'kauf' && (
+              <>
+                <div>
+                  <label className="block text-sm text-slate-400 mb-1">Bundesland</label>
+                  <Select
+                    value={bundesland}
+                    onChange={(e) => setBundesland(e.target.value)}
+                  >
+                    {Object.keys(GRUNDERWERBSTEUER).map(state => (
+                      <option key={state} value={state}>{state} ({GRUNDERWERBSTEUER[state]}%)</option>
+                    ))}
+                  </Select>
+                </div>
+                <div>
+                  <label className="block text-sm text-slate-400 mb-1">Maklerprovision (%)</label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    value={maklerProvision}
+                    onChange={(e) => setMaklerProvision(Number(e.target.value))}
+                  />
+                </div>
+              </>
+            )}
           </div>
         </Card>
 
@@ -2322,34 +2403,77 @@ const PurchaseAnalyzer: React.FC<{
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Kaufnebenkosten Breakdown */}
         <Card>
-          <h4 className="text-lg font-semibold text-white mb-4">Kaufnebenkosten</h4>
+          <h4 className="text-lg font-semibold text-white mb-4">
+            {mode === 'neubau' ? 'Kosten & Nebenkosten' : 'Kaufnebenkosten'}
+          </h4>
           <div className="space-y-3">
-            <div className="flex justify-between">
-              <span className="text-slate-400">Kaufpreis</span>
-              <span className="text-white font-medium"><Money value={purchasePrice} privacy={privacy} /></span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate-400">Grunderwerbsteuer ({GRUNDERWERBSTEUER[bundesland]}%)</span>
-              <span className="text-red-400"><Money value={kaufnebenkosten.grunderwerbsteuer} privacy={privacy} /></span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate-400">Notar (~1.5%)</span>
-              <span className="text-red-400"><Money value={kaufnebenkosten.notar} privacy={privacy} /></span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate-400">Grundbuch (~0.5%)</span>
-              <span className="text-red-400"><Money value={kaufnebenkosten.grundbuch} privacy={privacy} /></span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate-400">Makler ({maklerProvision}%)</span>
-              <span className="text-red-400"><Money value={kaufnebenkosten.makler} privacy={privacy} /></span>
-            </div>
+            {mode === 'neubau' ? (
+              <>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Grundstück (vorhanden)</span>
+                  <span className="text-emerald-400 font-medium"><Money value={grundstueckswert} privacy={privacy} /></span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Baukosten</span>
+                  <span className="text-white font-medium"><Money value={purchasePrice} privacy={privacy} /></span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Notar (Grundschuld ~1%)</span>
+                  <span className="text-red-400"><Money value={kaufnebenkosten.notar} privacy={privacy} /></span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Grundbuch (Grundschuld)</span>
+                  <span className="text-red-400"><Money value={kaufnebenkosten.grundbuch} privacy={privacy} /></span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Baugenehmigung</span>
+                  <span className="text-red-400"><Money value={kaufnebenkosten.baugenehmigung} privacy={privacy} /></span>
+                </div>
+                <div className="flex justify-between text-slate-500 line-through">
+                  <span>Grunderwerbsteuer</span>
+                  <span>€0 (entfällt)</span>
+                </div>
+                <div className="flex justify-between text-slate-500 line-through">
+                  <span>Makler</span>
+                  <span>€0 (entfällt)</span>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Kaufpreis</span>
+                  <span className="text-white font-medium"><Money value={purchasePrice} privacy={privacy} /></span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Grunderwerbsteuer ({GRUNDERWERBSTEUER[bundesland]}%)</span>
+                  <span className="text-red-400"><Money value={kaufnebenkosten.grunderwerbsteuer} privacy={privacy} /></span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Notar (~1.5%)</span>
+                  <span className="text-red-400"><Money value={kaufnebenkosten.notar} privacy={privacy} /></span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Grundbuch (~0.5%)</span>
+                  <span className="text-red-400"><Money value={kaufnebenkosten.grundbuch} privacy={privacy} /></span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Makler ({maklerProvision}%)</span>
+                  <span className="text-red-400"><Money value={kaufnebenkosten.makler} privacy={privacy} /></span>
+                </div>
+              </>
+            )}
             <div className="border-t border-slate-700 pt-3 flex justify-between">
               <span className="text-white font-semibold">Nebenkosten Gesamt</span>
               <span className="text-red-400 font-bold"><Money value={kaufnebenkosten.total} privacy={privacy} /></span>
             </div>
+            {mode === 'neubau' && (
+              <div className="flex justify-between">
+                <span className="text-slate-400">Finanzierungsbedarf</span>
+                <span className="text-amber-400 font-medium"><Money value={finanzierung.finanzierungsbedarf} privacy={privacy} /></span>
+              </div>
+            )}
             <div className="flex justify-between bg-slate-800 p-3 rounded-lg">
-              <span className="text-white font-semibold">Gesamtinvestition</span>
+              <span className="text-white font-semibold">Gesamtwert Immobilie</span>
               <span className="text-white font-bold text-lg"><Money value={finanzierung.gesamtkosten} privacy={privacy} /></span>
             </div>
           </div>
@@ -2359,10 +2483,27 @@ const PurchaseAnalyzer: React.FC<{
         <Card>
           <h4 className="text-lg font-semibold text-white mb-4">Finanzierung</h4>
           <div className="space-y-3">
-            <div className="flex justify-between">
-              <span className="text-slate-400">Eigenkapital</span>
-              <span className="text-emerald-400 font-medium"><Money value={eigenkapital} privacy={privacy} /></span>
-            </div>
+            {mode === 'neubau' ? (
+              <>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Grundstück (vorhanden)</span>
+                  <span className="text-emerald-400 font-medium"><Money value={grundstueckswert} privacy={privacy} /></span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">+ Bares Eigenkapital</span>
+                  <span className="text-emerald-400 font-medium"><Money value={eigenkapital} privacy={privacy} /></span>
+                </div>
+                <div className="flex justify-between border-t border-slate-700 pt-2">
+                  <span className="text-white font-semibold">= Gesamtes Eigenkapital</span>
+                  <span className="text-emerald-400 font-bold"><Money value={finanzierung.effektivesEigenkapital} privacy={privacy} /></span>
+                </div>
+              </>
+            ) : (
+              <div className="flex justify-between">
+                <span className="text-slate-400">Eigenkapital</span>
+                <span className="text-emerald-400 font-medium"><Money value={eigenkapital} privacy={privacy} /></span>
+              </div>
+            )}
             <div className="flex justify-between">
               <span className="text-slate-400">Fremdkapital (Kredit)</span>
               <span className="text-amber-400 font-medium"><Money value={finanzierung.fremdkapital} privacy={privacy} /></span>
