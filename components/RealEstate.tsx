@@ -17,13 +17,23 @@ import {
   LayoutGrid,
   HardHat,
   Save,
-  Copy
+  Copy,
+  ShoppingCart,
+  AlertTriangle,
+  Receipt,
+  TrendingDown,
+  BarChart3,
+  Shield,
+  Percent
 } from 'lucide-react';
 
 enum SubView {
   OVERVIEW = 'Übersicht',
   SIMULATOR = 'Simulator',
   BAUKOSTEN = 'Baukosten',
+  KAUFANALYSE = 'Kaufanalyse',
+  RISIKO = 'Risiko',
+  STEUER_EUR = 'Steuer EÜR',
 }
 import { 
   ResponsiveContainer, 
@@ -186,18 +196,42 @@ export const RealEstate: React.FC<RealEstateProps> = ({ privacy }) => {
         </div>
         <div className="flex items-center gap-3">
           {/* SubView Toggle */}
-          <div className="flex bg-darker p-1 rounded-lg border border-slate-700">
+          <div className="flex flex-wrap bg-darker p-1 rounded-lg border border-slate-700">
             <button
               onClick={() => setSubView(SubView.OVERVIEW)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+              className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
                 subView === SubView.OVERVIEW ? 'bg-slate-600 text-white' : 'text-slate-400 hover:text-white'
               }`}
             >
               <LayoutGrid size={16} /> Übersicht
             </button>
             <button
+              onClick={() => setSubView(SubView.KAUFANALYSE)}
+              className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                subView === SubView.KAUFANALYSE ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <ShoppingCart size={16} /> Kaufanalyse
+            </button>
+            <button
+              onClick={() => setSubView(SubView.RISIKO)}
+              className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                subView === SubView.RISIKO ? 'bg-red-600 text-white' : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <AlertTriangle size={16} /> Risiko
+            </button>
+            <button
+              onClick={() => setSubView(SubView.STEUER_EUR)}
+              className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                subView === SubView.STEUER_EUR ? 'bg-purple-600 text-white' : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <Receipt size={16} /> Steuer EÜR
+            </button>
+            <button
               onClick={() => setSubView(SubView.SIMULATOR)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+              className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
                 subView === SubView.SIMULATOR ? 'bg-amber-600 text-white' : 'text-slate-400 hover:text-white'
               }`}
             >
@@ -205,7 +239,7 @@ export const RealEstate: React.FC<RealEstateProps> = ({ privacy }) => {
             </button>
             <button
               onClick={() => setSubView(SubView.BAUKOSTEN)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+              className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
                 subView === SubView.BAUKOSTEN ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'
               }`}
             >
@@ -318,6 +352,21 @@ export const RealEstate: React.FC<RealEstateProps> = ({ privacy }) => {
       {/* SIMULATOR VIEW */}
       {subView === SubView.SIMULATOR && (
         <PropertySimulator properties={properties} privacy={privacy} />
+      )}
+
+      {/* KAUFANALYSE VIEW */}
+      {subView === SubView.KAUFANALYSE && (
+        <PurchaseAnalyzer properties={properties} privacy={privacy} />
+      )}
+
+      {/* RISIKO VIEW */}
+      {subView === SubView.RISIKO && (
+        <RiskAnalyzer properties={properties} privacy={privacy} />
+      )}
+
+      {/* STEUER EÜR VIEW */}
+      {subView === SubView.STEUER_EUR && (
+        <TaxEURCalculator properties={properties} privacy={privacy} />
       )}
 
       {/* BAUKOSTEN VIEW */}
@@ -2000,6 +2049,1122 @@ const BuildingCostSimulator: React.FC<{ privacy: boolean }> = ({ privacy }) => {
           <li>• Keller vs. Bodenplatte: ~€400-500/m² Unterschied, aber mehr Nutzfläche</li>
           <li>• Architektenhonorar nach HOAI: 10-15% der Baukosten (alle Leistungsphasen)</li>
           <li>• Reserve von 10-15% ist empfohlen für unvorhergesehene Kosten</li>
+        </ul>
+      </Card>
+    </div>
+  );
+};
+
+// ===================== PURCHASE ANALYZER =====================
+
+// Grunderwerbsteuer by German state
+const GRUNDERWERBSTEUER: Record<string, number> = {
+  'Baden-Württemberg': 5.0,
+  'Bayern': 3.5,
+  'Berlin': 6.0,
+  'Brandenburg': 6.5,
+  'Bremen': 5.0,
+  'Hamburg': 5.5,
+  'Hessen': 6.0,
+  'Mecklenburg-Vorpommern': 6.0,
+  'Niedersachsen': 5.0,
+  'Nordrhein-Westfalen': 6.5,
+  'Rheinland-Pfalz': 5.0,
+  'Saarland': 6.5,
+  'Sachsen': 5.5,
+  'Sachsen-Anhalt': 5.0,
+  'Schleswig-Holstein': 6.5,
+  'Thüringen': 5.0,
+};
+
+const PurchaseAnalyzer: React.FC<{
+  properties: RealEstateProperty[];
+  privacy: boolean;
+}> = ({ properties, privacy }) => {
+  // Purchase Analysis State
+  const [purchasePrice, setPurchasePrice] = useState(500000);
+  const [bundesland, setBundesland] = useState('Bayern');
+  const [maklerProvision, setMaklerProvision] = useState(3.57);
+  const [monthlyRent, setMonthlyRent] = useState(1500);
+  const [monthlyExpenses, setMonthlyExpenses] = useState(400);
+  const [eigenkapital, setEigenkapital] = useState(100000);
+  const [zinssatz, setZinssatz] = useState(3.5);
+  const [tilgung, setTilgung] = useState(2.0);
+  const [zinsbindung, setZinsbindung] = useState(15);
+
+  // Kaufnebenkosten calculation
+  const kaufnebenkosten = useMemo(() => {
+    const grunderwerbsteuer = purchasePrice * (GRUNDERWERBSTEUER[bundesland] / 100);
+    const notar = purchasePrice * 0.015;
+    const grundbuch = purchasePrice * 0.005;
+    const makler = purchasePrice * (maklerProvision / 100);
+    const total = grunderwerbsteuer + notar + grundbuch + makler;
+    return { grunderwerbsteuer, notar, grundbuch, makler, total };
+  }, [purchasePrice, bundesland, maklerProvision]);
+
+  // Total investment & financing
+  const finanzierung = useMemo(() => {
+    const gesamtkosten = purchasePrice + kaufnebenkosten.total;
+    const fremdkapital = Math.max(0, gesamtkosten - eigenkapital);
+    const eigenkapitalQuote = (eigenkapital / gesamtkosten) * 100;
+    const monatlicheRate = fremdkapital * ((zinssatz + tilgung) / 100 / 12);
+    const jahresRate = monatlicheRate * 12;
+    
+    // Calculate different terms
+    const calculatePayoff = (principal: number, rate: number, repayment: number) => {
+      let remaining = principal;
+      let years = 0;
+      const annualPayment = principal * (rate + repayment) / 100;
+      while (remaining > 0 && years < 50) {
+        const interest = remaining * rate / 100;
+        const principal = annualPayment - interest;
+        remaining -= principal;
+        years++;
+      }
+      return years;
+    };
+    
+    const yearsToPayoff = calculatePayoff(fremdkapital, zinssatz, tilgung);
+    
+    // Remaining debt at end of fixed interest period
+    let remainingAtEnd = fremdkapital;
+    for (let i = 0; i < zinsbindung; i++) {
+      const interest = remainingAtEnd * zinssatz / 100;
+      const principal = jahresRate - interest;
+      remainingAtEnd -= principal;
+    }
+    
+    return {
+      gesamtkosten,
+      fremdkapital,
+      eigenkapitalQuote,
+      monatlicheRate,
+      jahresRate,
+      yearsToPayoff,
+      remainingAtEnd: Math.max(0, remainingAtEnd),
+    };
+  }, [purchasePrice, kaufnebenkosten.total, eigenkapital, zinssatz, tilgung, zinsbindung]);
+
+  // Rendite calculations
+  const rendite = useMemo(() => {
+    const jahresmiete = monthlyRent * 12;
+    const jahresExpenses = monthlyExpenses * 12;
+    const bruttomietrendite = (jahresmiete / purchasePrice) * 100;
+    const nettomietrendite = ((jahresmiete - jahresExpenses) / purchasePrice) * 100;
+    
+    // Eigenkapitalrendite (ROE)
+    const nettoEinkommen = jahresmiete - jahresExpenses - finanzierung.jahresRate;
+    const eigenkapitalRendite = (nettoEinkommen / eigenkapital) * 100;
+    
+    // Cashflow
+    const monthlyCashflow = monthlyRent - monthlyExpenses - finanzierung.monatlicheRate;
+    
+    // Break-even rent (minimal rent to cover all costs)
+    const breakEvenRent = finanzierung.monatlicheRate + monthlyExpenses;
+    
+    // Comparison with ETF (7% p.a.)
+    const etfReturn = eigenkapital * 0.07;
+    const realEstateReturn = nettoEinkommen;
+    
+    return {
+      bruttomietrendite,
+      nettomietrendite,
+      eigenkapitalRendite,
+      monthlyCashflow,
+      breakEvenRent,
+      etfReturn,
+      realEstateReturn,
+    };
+  }, [monthlyRent, monthlyExpenses, purchasePrice, eigenkapital, finanzierung]);
+
+  // Financing term comparison
+  const finanzierungsVergleich = useMemo(() => {
+    const terms = [10, 15, 20, 25, 30];
+    return terms.map(years => {
+      const requiredTilgung = 100 / years;
+      const annualRate = finanzierung.fremdkapital * (zinssatz + requiredTilgung) / 100;
+      const monthlyRate = annualRate / 12;
+      const totalInterest = (annualRate * years) - finanzierung.fremdkapital;
+      
+      return {
+        years,
+        tilgung: requiredTilgung,
+        monthlyRate,
+        totalInterest,
+        totalCost: finanzierung.fremdkapital + totalInterest,
+      };
+    });
+  }, [finanzierung.fremdkapital, zinssatz]);
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center gap-4 mb-6">
+        <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center">
+          <ShoppingCart size={24} className="text-white" />
+        </div>
+        <div>
+          <h3 className="text-xl font-bold text-white">Kaufanalyse</h3>
+          <p className="text-slate-400 text-sm">Kaufnebenkosten, Rendite & Finanzierung</p>
+        </div>
+      </div>
+
+      {/* Input Section */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Kaufpreis & Nebenkosten */}
+        <Card>
+          <h4 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+            <Building2 size={18} className="text-emerald-400" /> Kaufpreis & Nebenkosten
+          </h4>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm text-slate-400 mb-1">Kaufpreis (€)</label>
+              <Input
+                type="number"
+                value={purchasePrice}
+                onChange={(e) => setPurchasePrice(Number(e.target.value))}
+              />
+            </div>
+            <div>
+              <label className="block text-sm text-slate-400 mb-1">Bundesland</label>
+              <Select
+                value={bundesland}
+                onChange={(e) => setBundesland(e.target.value)}
+              >
+                {Object.keys(GRUNDERWERBSTEUER).map(state => (
+                  <option key={state} value={state}>{state} ({GRUNDERWERBSTEUER[state]}%)</option>
+                ))}
+              </Select>
+            </div>
+            <div>
+              <label className="block text-sm text-slate-400 mb-1">Maklerprovision (%)</label>
+              <Input
+                type="number"
+                step="0.01"
+                value={maklerProvision}
+                onChange={(e) => setMaklerProvision(Number(e.target.value))}
+              />
+            </div>
+          </div>
+        </Card>
+
+        {/* Mieteinnahmen */}
+        <Card>
+          <h4 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+            <Wallet size={18} className="text-blue-400" /> Mieteinnahmen
+          </h4>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm text-slate-400 mb-1">Kaltmiete / Monat (€)</label>
+              <Input
+                type="number"
+                value={monthlyRent}
+                onChange={(e) => setMonthlyRent(Number(e.target.value))}
+              />
+            </div>
+            <div>
+              <label className="block text-sm text-slate-400 mb-1">Nicht-umlagefähige Kosten / Monat (€)</label>
+              <Input
+                type="number"
+                value={monthlyExpenses}
+                onChange={(e) => setMonthlyExpenses(Number(e.target.value))}
+              />
+              <p className="text-xs text-slate-500 mt-1">Hausgeld, Grundsteuer, Versicherung, Instandhaltung</p>
+            </div>
+          </div>
+        </Card>
+
+        {/* Finanzierung */}
+        <Card>
+          <h4 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+            <PiggyBank size={18} className="text-amber-400" /> Finanzierung
+          </h4>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm text-slate-400 mb-1">Eigenkapital (€)</label>
+              <Input
+                type="number"
+                value={eigenkapital}
+                onChange={(e) => setEigenkapital(Number(e.target.value))}
+              />
+            </div>
+            <div>
+              <label className="block text-sm text-slate-400 mb-1">Zinssatz (%)</label>
+              <Input
+                type="number"
+                step="0.1"
+                value={zinssatz}
+                onChange={(e) => setZinssatz(Number(e.target.value))}
+              />
+            </div>
+            <div>
+              <label className="block text-sm text-slate-400 mb-1">Anfangstilgung (%)</label>
+              <Input
+                type="number"
+                step="0.1"
+                value={tilgung}
+                onChange={(e) => setTilgung(Number(e.target.value))}
+              />
+            </div>
+            <div>
+              <label className="block text-sm text-slate-400 mb-1">Zinsbindung (Jahre)</label>
+              <Input
+                type="number"
+                value={zinsbindung}
+                onChange={(e) => setZinsbindung(Number(e.target.value))}
+              />
+            </div>
+          </div>
+        </Card>
+      </div>
+
+      {/* Results Section */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Kaufnebenkosten Breakdown */}
+        <Card>
+          <h4 className="text-lg font-semibold text-white mb-4">Kaufnebenkosten</h4>
+          <div className="space-y-3">
+            <div className="flex justify-between">
+              <span className="text-slate-400">Kaufpreis</span>
+              <span className="text-white font-medium"><Money value={purchasePrice} privacy={privacy} /></span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-slate-400">Grunderwerbsteuer ({GRUNDERWERBSTEUER[bundesland]}%)</span>
+              <span className="text-red-400"><Money value={kaufnebenkosten.grunderwerbsteuer} privacy={privacy} /></span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-slate-400">Notar (~1.5%)</span>
+              <span className="text-red-400"><Money value={kaufnebenkosten.notar} privacy={privacy} /></span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-slate-400">Grundbuch (~0.5%)</span>
+              <span className="text-red-400"><Money value={kaufnebenkosten.grundbuch} privacy={privacy} /></span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-slate-400">Makler ({maklerProvision}%)</span>
+              <span className="text-red-400"><Money value={kaufnebenkosten.makler} privacy={privacy} /></span>
+            </div>
+            <div className="border-t border-slate-700 pt-3 flex justify-between">
+              <span className="text-white font-semibold">Nebenkosten Gesamt</span>
+              <span className="text-red-400 font-bold"><Money value={kaufnebenkosten.total} privacy={privacy} /></span>
+            </div>
+            <div className="flex justify-between bg-slate-800 p-3 rounded-lg">
+              <span className="text-white font-semibold">Gesamtinvestition</span>
+              <span className="text-white font-bold text-lg"><Money value={finanzierung.gesamtkosten} privacy={privacy} /></span>
+            </div>
+          </div>
+        </Card>
+
+        {/* Finanzierung Details */}
+        <Card>
+          <h4 className="text-lg font-semibold text-white mb-4">Finanzierung</h4>
+          <div className="space-y-3">
+            <div className="flex justify-between">
+              <span className="text-slate-400">Eigenkapital</span>
+              <span className="text-emerald-400 font-medium"><Money value={eigenkapital} privacy={privacy} /></span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-slate-400">Fremdkapital (Kredit)</span>
+              <span className="text-amber-400 font-medium"><Money value={finanzierung.fremdkapital} privacy={privacy} /></span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-slate-400">Eigenkapitalquote</span>
+              <span className={`font-medium ${finanzierung.eigenkapitalQuote >= 20 ? 'text-emerald-400' : 'text-red-400'}`}>
+                {finanzierung.eigenkapitalQuote.toFixed(1)}%
+              </span>
+            </div>
+            <div className="border-t border-slate-700 pt-3 flex justify-between">
+              <span className="text-white font-semibold">Monatliche Rate</span>
+              <span className="text-white font-bold"><Money value={finanzierung.monatlicheRate} privacy={privacy} /></span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-slate-400">Laufzeit bis Tilgung</span>
+              <span className="text-white font-medium">~{finanzierung.yearsToPayoff} Jahre</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-slate-400">Restschuld nach {zinsbindung}J</span>
+              <span className="text-amber-400 font-medium"><Money value={finanzierung.remainingAtEnd} privacy={privacy} /></span>
+            </div>
+          </div>
+        </Card>
+      </div>
+
+      {/* Rendite Kennzahlen */}
+      <Card>
+        <h4 className="text-lg font-semibold text-white mb-4">Rendite-Kennzahlen</h4>
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+          <div className="bg-slate-800 p-4 rounded-lg text-center">
+            <p className="text-slate-400 text-xs uppercase mb-1">Bruttomietrendite</p>
+            <p className={`text-2xl font-bold ${rendite.bruttomietrendite >= 5 ? 'text-emerald-400' : 'text-amber-400'}`}>
+              {rendite.bruttomietrendite.toFixed(2)}%
+            </p>
+          </div>
+          <div className="bg-slate-800 p-4 rounded-lg text-center">
+            <p className="text-slate-400 text-xs uppercase mb-1">Nettomietrendite</p>
+            <p className={`text-2xl font-bold ${rendite.nettomietrendite >= 3 ? 'text-emerald-400' : 'text-amber-400'}`}>
+              {rendite.nettomietrendite.toFixed(2)}%
+            </p>
+          </div>
+          <div className="bg-slate-800 p-4 rounded-lg text-center">
+            <p className="text-slate-400 text-xs uppercase mb-1">Eigenkapitalrendite</p>
+            <p className={`text-2xl font-bold ${rendite.eigenkapitalRendite >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+              {rendite.eigenkapitalRendite.toFixed(2)}%
+            </p>
+          </div>
+          <div className="bg-slate-800 p-4 rounded-lg text-center">
+            <p className="text-slate-400 text-xs uppercase mb-1">Monatl. Cashflow</p>
+            <p className={`text-2xl font-bold ${rendite.monthlyCashflow >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+              <Money value={rendite.monthlyCashflow} privacy={privacy} sign />
+            </p>
+          </div>
+          <div className="bg-slate-800 p-4 rounded-lg text-center">
+            <p className="text-slate-400 text-xs uppercase mb-1">Break-Even Miete</p>
+            <p className="text-xl font-bold text-white">
+              <Money value={rendite.breakEvenRent} privacy={privacy} />
+            </p>
+          </div>
+          <div className="bg-slate-800 p-4 rounded-lg text-center">
+            <p className="text-slate-400 text-xs uppercase mb-1">vs. ETF (7%)</p>
+            <p className={`text-xl font-bold ${rendite.realEstateReturn > rendite.etfReturn ? 'text-emerald-400' : 'text-red-400'}`}>
+              {rendite.realEstateReturn > rendite.etfReturn ? '+' : ''}{((rendite.realEstateReturn - rendite.etfReturn) / 12).toFixed(0)}€/Mo
+            </p>
+          </div>
+        </div>
+      </Card>
+
+      {/* Laufzeitenvergleich */}
+      <Card>
+        <h4 className="text-lg font-semibold text-white mb-4">Laufzeitenvergleich</h4>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left">
+            <thead>
+              <tr className="text-slate-400 text-sm border-b border-slate-700">
+                <th className="py-3 px-2">Laufzeit</th>
+                <th className="py-3 px-2 text-right">Tilgung</th>
+                <th className="py-3 px-2 text-right">Monatl. Rate</th>
+                <th className="py-3 px-2 text-right">Gesamtzinsen</th>
+                <th className="py-3 px-2 text-right">Gesamtkosten</th>
+              </tr>
+            </thead>
+            <tbody>
+              {finanzierungsVergleich.map(f => (
+                <tr key={f.years} className={`border-b border-slate-800 ${f.years === Math.round(100/tilgung) ? 'bg-emerald-500/10' : ''}`}>
+                  <td className="py-3 px-2 text-white font-medium">{f.years} Jahre</td>
+                  <td className="py-3 px-2 text-right text-slate-300">{f.tilgung.toFixed(1)}%</td>
+                  <td className="py-3 px-2 text-right text-white"><Money value={f.monthlyRate} privacy={privacy} /></td>
+                  <td className="py-3 px-2 text-right text-red-400"><Money value={f.totalInterest} privacy={privacy} /></td>
+                  <td className="py-3 px-2 text-right text-white font-semibold"><Money value={f.totalCost} privacy={privacy} /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+    </div>
+  );
+};
+
+// ===================== RISK ANALYZER =====================
+
+const RiskAnalyzer: React.FC<{
+  properties: RealEstateProperty[];
+  privacy: boolean;
+}> = ({ properties, privacy }) => {
+  // Stress test parameters
+  const [interestShock, setInterestShock] = useState(2); // +2% interest
+  const [vacancyMonths, setVacancyMonths] = useState(2); // 2 months/year
+  const [valueDropPercent, setValueDropPercent] = useState(20); // -20% value
+  const [showWorstCase, setShowWorstCase] = useState(false);
+
+  // Current portfolio totals
+  const currentTotals = useMemo(() => {
+    return properties.reduce((acc, p) => {
+      acc.totalValue += p.currentValue;
+      acc.totalDebt += p.loanAmount;
+      acc.monthlyPayment += p.monthlyPayment;
+      acc.monthlyRent += p.isRented ? p.monthlyRent : 0;
+      acc.monthlyExpenses += p.monthlyTaxes + p.monthlyInsurance + p.monthlyMaintenance + p.monthlyHOA;
+      return acc;
+    }, { totalValue: 0, totalDebt: 0, monthlyPayment: 0, monthlyRent: 0, monthlyExpenses: 0 });
+  }, [properties]);
+
+  // Stress test calculations
+  const stressTests = useMemo(() => {
+    // Interest rate shock
+    const interestStress = properties.map(p => {
+      const newRate = p.interestRate + interestShock;
+      const newMonthlyInterest = p.loanAmount * (newRate / 100 / 12);
+      const newPayment = newMonthlyInterest + p.monthlyPrincipal;
+      const paymentIncrease = newPayment - p.monthlyPayment;
+      return { name: p.name, oldPayment: p.monthlyPayment, newPayment, increase: paymentIncrease };
+    });
+    const totalInterestIncrease = interestStress.reduce((sum, s) => sum + s.increase, 0);
+
+    // Vacancy stress
+    const vacancyFactor = (12 - vacancyMonths) / 12;
+    const adjustedRent = currentTotals.monthlyRent * vacancyFactor;
+    const rentLoss = currentTotals.monthlyRent - adjustedRent;
+
+    // Value drop
+    const newValue = currentTotals.totalValue * (1 - valueDropPercent / 100);
+    const newEquity = newValue - currentTotals.totalDebt;
+    const newLTV = (currentTotals.totalDebt / newValue) * 100;
+
+    // Current cashflow
+    const currentCashflow = currentTotals.monthlyRent - currentTotals.monthlyExpenses - currentTotals.monthlyPayment;
+
+    // Stressed cashflow (worst case)
+    const worstCaseCashflow = adjustedRent - currentTotals.monthlyExpenses - (currentTotals.monthlyPayment + totalInterestIncrease);
+
+    return {
+      interestStress,
+      totalInterestIncrease,
+      adjustedRent,
+      rentLoss,
+      newValue,
+      newEquity,
+      newLTV,
+      currentCashflow,
+      worstCaseCashflow,
+    };
+  }, [properties, currentTotals, interestShock, vacancyMonths, valueDropPercent]);
+
+  // Risk score calculation
+  const riskScore = useMemo(() => {
+    let score = 0;
+    const currentLTV = (currentTotals.totalDebt / currentTotals.totalValue) * 100;
+    
+    // LTV risk
+    if (currentLTV > 90) score += 30;
+    else if (currentLTV > 80) score += 20;
+    else if (currentLTV > 60) score += 10;
+    
+    // Cashflow risk
+    const cashflowRatio = stressTests.currentCashflow / currentTotals.monthlyPayment;
+    if (cashflowRatio < 0) score += 30;
+    else if (cashflowRatio < 0.2) score += 20;
+    else if (cashflowRatio < 0.5) score += 10;
+    
+    // Interest rate sensitivity
+    const interestImpact = stressTests.totalInterestIncrease / currentTotals.monthlyPayment;
+    if (interestImpact > 0.5) score += 20;
+    else if (interestImpact > 0.3) score += 15;
+    else if (interestImpact > 0.2) score += 10;
+    
+    // Concentration risk
+    if (properties.length === 1) score += 10;
+    
+    return Math.min(100, score);
+  }, [currentTotals, stressTests, properties.length]);
+
+  const getRiskLevel = (score: number) => {
+    if (score >= 60) return { text: 'Hoch', color: 'text-red-400', bg: 'bg-red-500' };
+    if (score >= 30) return { text: 'Mittel', color: 'text-amber-400', bg: 'bg-amber-500' };
+    return { text: 'Niedrig', color: 'text-emerald-400', bg: 'bg-emerald-500' };
+  };
+
+  const risk = getRiskLevel(riskScore);
+
+  // Chart data for stress scenarios
+  const scenarioData = [
+    { name: 'Aktuell', cashflow: stressTests.currentCashflow, equity: currentTotals.totalValue - currentTotals.totalDebt },
+    { name: `+${interestShock}% Zins`, cashflow: stressTests.currentCashflow - stressTests.totalInterestIncrease, equity: currentTotals.totalValue - currentTotals.totalDebt },
+    { name: `${vacancyMonths}Mo Leerstand`, cashflow: stressTests.currentCashflow - stressTests.rentLoss, equity: currentTotals.totalValue - currentTotals.totalDebt },
+    { name: `-${valueDropPercent}% Wert`, cashflow: stressTests.currentCashflow, equity: stressTests.newEquity },
+    { name: 'Worst Case', cashflow: stressTests.worstCaseCashflow, equity: stressTests.newEquity },
+  ];
+
+  if (properties.length === 0) {
+    return (
+      <Card className="text-center py-12">
+        <AlertTriangle size={48} className="mx-auto text-slate-600 mb-4" />
+        <h3 className="text-xl font-bold text-white mb-2">Keine Immobilien</h3>
+        <p className="text-slate-400">Füge Immobilien hinzu, um Risiken zu analysieren.</p>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center gap-4 mb-6">
+        <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-red-500 to-orange-600 flex items-center justify-center">
+          <AlertTriangle size={24} className="text-white" />
+        </div>
+        <div>
+          <h3 className="text-xl font-bold text-white">Risiko-Analyse</h3>
+          <p className="text-slate-400 text-sm">Stress-Tests & Portfolio-Bewertung</p>
+        </div>
+      </div>
+
+      {/* Risk Score */}
+      <Card className="bg-gradient-to-r from-slate-900 to-slate-800">
+        <div className="flex items-center justify-between">
+          <div>
+            <h4 className="text-lg font-semibold text-white mb-2">Risiko-Score</h4>
+            <p className="text-slate-400 text-sm">Basierend auf LTV, Cashflow, Zinssensitivität</p>
+          </div>
+          <div className="text-right">
+            <div className={`text-5xl font-bold ${risk.color}`}>{riskScore}</div>
+            <Badge className={`${risk.bg} text-white`}>{risk.text}</Badge>
+          </div>
+        </div>
+        <div className="mt-4 h-3 bg-slate-700 rounded-full overflow-hidden">
+          <div className={`h-full ${risk.bg} transition-all duration-500`} style={{ width: `${riskScore}%` }} />
+        </div>
+      </Card>
+
+      {/* Stress Test Controls */}
+      <Card>
+        <h4 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+          <SlidersHorizontal size={18} className="text-amber-400" /> Stress-Test Parameter
+        </h4>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div>
+            <label className="block text-sm text-slate-400 mb-2">
+              Zinsanstieg bei Anschlussfinanzierung: <span className="text-amber-400 font-medium">+{interestShock}%</span>
+            </label>
+            <input
+              type="range"
+              min="0"
+              max="5"
+              step="0.5"
+              value={interestShock}
+              onChange={(e) => setInterestShock(Number(e.target.value))}
+              className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-amber-500"
+            />
+          </div>
+          <div>
+            <label className="block text-sm text-slate-400 mb-2">
+              Leerstand pro Jahr: <span className="text-red-400 font-medium">{vacancyMonths} Monate</span>
+            </label>
+            <input
+              type="range"
+              min="0"
+              max="6"
+              step="1"
+              value={vacancyMonths}
+              onChange={(e) => setVacancyMonths(Number(e.target.value))}
+              className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-red-500"
+            />
+          </div>
+          <div>
+            <label className="block text-sm text-slate-400 mb-2">
+              Wertverlust: <span className="text-purple-400 font-medium">-{valueDropPercent}%</span>
+            </label>
+            <input
+              type="range"
+              min="0"
+              max="40"
+              step="5"
+              value={valueDropPercent}
+              onChange={(e) => setValueDropPercent(Number(e.target.value))}
+              className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-purple-500"
+            />
+          </div>
+        </div>
+      </Card>
+
+      {/* Stress Test Results */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <Card className="text-center">
+          <Shield size={24} className="mx-auto mb-2 text-blue-400" />
+          <p className="text-slate-400 text-xs uppercase mb-1">Aktueller LTV</p>
+          <p className={`text-2xl font-bold ${(currentTotals.totalDebt / currentTotals.totalValue * 100) > 80 ? 'text-red-400' : 'text-white'}`}>
+            {((currentTotals.totalDebt / currentTotals.totalValue) * 100).toFixed(1)}%
+          </p>
+        </Card>
+        <Card className="text-center">
+          <TrendingDown size={24} className="mx-auto mb-2 text-purple-400" />
+          <p className="text-slate-400 text-xs uppercase mb-1">LTV bei -{valueDropPercent}% Wert</p>
+          <p className={`text-2xl font-bold ${stressTests.newLTV > 100 ? 'text-red-400' : stressTests.newLTV > 80 ? 'text-amber-400' : 'text-white'}`}>
+            {stressTests.newLTV.toFixed(1)}%
+          </p>
+        </Card>
+        <Card className="text-center">
+          <Percent size={24} className="mx-auto mb-2 text-amber-400" />
+          <p className="text-slate-400 text-xs uppercase mb-1">Rate bei +{interestShock}% Zins</p>
+          <p className="text-2xl font-bold text-amber-400">
+            +<Money value={stressTests.totalInterestIncrease} privacy={privacy} />
+          </p>
+        </Card>
+        <Card className="text-center">
+          <Wallet size={24} className="mx-auto mb-2 text-red-400" />
+          <p className="text-slate-400 text-xs uppercase mb-1">Worst-Case Cashflow</p>
+          <p className={`text-2xl font-bold ${stressTests.worstCaseCashflow >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+            <Money value={stressTests.worstCaseCashflow} privacy={privacy} sign />
+          </p>
+        </Card>
+      </div>
+
+      {/* Scenario Chart */}
+      <Card>
+        <h4 className="text-lg font-semibold text-white mb-4">Szenario-Vergleich</h4>
+        <div className="h-80">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={scenarioData} margin={{ top: 20, right: 20, left: 20, bottom: 20 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
+              <XAxis dataKey="name" stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} />
+              <YAxis stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(val) => privacy ? '' : `€${val/1000}k`} />
+              <RechartsTooltip 
+                contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px' }}
+                formatter={(val: number, name: string) => [privacy ? '****' : `€${val.toLocaleString()}`, name === 'cashflow' ? 'Monatl. Cashflow' : 'Eigenkapital']}
+              />
+              <Legend />
+              <Bar name="Monatl. Cashflow" dataKey="cashflow" fill="#6366f1" radius={[4, 4, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      </Card>
+
+      {/* Interest Stress by Property */}
+      <Card>
+        <h4 className="text-lg font-semibold text-white mb-4">Zinsrisiko pro Immobilie (+{interestShock}%)</h4>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left">
+            <thead>
+              <tr className="text-slate-400 text-sm border-b border-slate-700">
+                <th className="py-3 px-2">Immobilie</th>
+                <th className="py-3 px-2 text-right">Aktuelle Rate</th>
+                <th className="py-3 px-2 text-right">Neue Rate</th>
+                <th className="py-3 px-2 text-right">Mehrbelastung</th>
+              </tr>
+            </thead>
+            <tbody>
+              {stressTests.interestStress.map((s, i) => (
+                <tr key={i} className="border-b border-slate-800">
+                  <td className="py-3 px-2 text-white font-medium">{s.name}</td>
+                  <td className="py-3 px-2 text-right text-slate-300"><Money value={s.oldPayment} privacy={privacy} /></td>
+                  <td className="py-3 px-2 text-right text-amber-400"><Money value={s.newPayment} privacy={privacy} /></td>
+                  <td className="py-3 px-2 text-right text-red-400">+<Money value={s.increase} privacy={privacy} /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+
+      {/* Portfolio Diversification */}
+      <Card>
+        <h4 className="text-lg font-semibold text-white mb-4">Portfolio-Diversifikation</h4>
+        {properties.length === 1 ? (
+          <div className="flex items-center gap-3 p-4 bg-amber-500/10 rounded-lg border border-amber-500/20">
+            <AlertTriangle className="text-amber-400" size={24} />
+            <div>
+              <p className="text-amber-400 font-medium">Klumpenrisiko</p>
+              <p className="text-slate-400 text-sm">Nur eine Immobilie im Portfolio. Diversifikation durch weitere Objekte erhöht die Stabilität.</p>
+            </div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {properties.map(p => {
+              const share = (p.currentValue / currentTotals.totalValue) * 100;
+              return (
+                <div key={p.id} className="flex items-center justify-between p-3 bg-slate-800 rounded-lg">
+                  <div>
+                    <p className="text-white font-medium">{p.name}</p>
+                    <p className="text-slate-400 text-sm">{p.address}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-white font-bold">{share.toFixed(1)}%</p>
+                    <p className="text-slate-400 text-sm"><Money value={p.currentValue} privacy={privacy} /></p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </Card>
+    </div>
+  );
+};
+
+// ===================== TAX EÜR CALCULATOR =====================
+
+const TaxEURCalculator: React.FC<{
+  properties: RealEstateProperty[];
+  privacy: boolean;
+}> = ({ properties, privacy }) => {
+  // Tax settings
+  const [grenzsteuersatz, setGrenzsteuersatz] = useState(42);
+  const [kirchensteuer, setKirchensteuer] = useState(false);
+  const [soli, setSoli] = useState(false);
+
+  // Additional income/expenses per property
+  const [propertyDetails, setPropertyDetails] = useState<Record<string, {
+    nebenkostenVorauszahlung: number;
+    sonstigeEinnahmen: number;
+    hausverwaltung: number;
+    instandhaltung: number;
+    fahrtkosten: number;
+    sonstigeWerbungskosten: number;
+    afaRate: number;
+    baujahr: number;
+  }>>({});
+
+  // Initialize property details
+  useEffect(() => {
+    const initial: typeof propertyDetails = {};
+    properties.forEach(p => {
+      if (!propertyDetails[p.id]) {
+        initial[p.id] = {
+          nebenkostenVorauszahlung: 200,
+          sonstigeEinnahmen: 0,
+          hausverwaltung: 30,
+          instandhaltung: p.monthlyMaintenance * 12,
+          fahrtkosten: 100,
+          sonstigeWerbungskosten: 0,
+          afaRate: 2.0,
+          baujahr: 1990,
+        };
+      } else {
+        initial[p.id] = propertyDetails[p.id];
+      }
+    });
+    if (Object.keys(initial).length > 0) {
+      setPropertyDetails(prev => ({ ...prev, ...initial }));
+    }
+  }, [properties]);
+
+  // Calculate EÜR for each property
+  const eurCalculations = useMemo(() => {
+    return properties.filter(p => p.isRented).map(p => {
+      const details = propertyDetails[p.id] || {
+        nebenkostenVorauszahlung: 200,
+        sonstigeEinnahmen: 0,
+        hausverwaltung: 30,
+        instandhaltung: p.monthlyMaintenance * 12,
+        fahrtkosten: 100,
+        sonstigeWerbungskosten: 0,
+        afaRate: 2.0,
+        baujahr: 1990,
+      };
+
+      // EINNAHMEN
+      const kaltmiete = p.monthlyRent * 12;
+      const nebenkosten = details.nebenkostenVorauszahlung * 12;
+      const sonstigeEinnahmen = details.sonstigeEinnahmen;
+      const gesamtEinnahmen = kaltmiete + nebenkosten + sonstigeEinnahmen;
+
+      // WERBUNGSKOSTEN
+      // AfA: 2% for buildings after 1925, 2.5% for before
+      const gebaeudewert = p.purchasePrice * 0.8; // 80% building, 20% land
+      const afaRate = details.baujahr < 1925 ? 2.5 : details.afaRate;
+      const afa = gebaeudewert * (afaRate / 100);
+
+      const zinsen = p.monthlyInterest * 12;
+      const grundsteuer = p.monthlyTaxes * 12;
+      const versicherung = p.monthlyInsurance * 12;
+      const hausgeld = p.monthlyHOA * 12 - nebenkosten; // Subtract recoverable costs
+      const hausverwaltung = details.hausverwaltung * 12;
+      const instandhaltung = details.instandhaltung;
+      const fahrtkosten = details.fahrtkosten;
+      const sonstige = details.sonstigeWerbungskosten;
+
+      const gesamtWerbungskosten = afa + zinsen + grundsteuer + versicherung + Math.max(0, hausgeld) + hausverwaltung + instandhaltung + fahrtkosten + sonstige;
+
+      // ERGEBNIS
+      const einkuenfteVV = kaltmiete - gesamtWerbungskosten; // Only Kaltmiete counts for tax, Nebenkosten are pass-through
+      
+      // Tax calculation
+      let effectiveRate = grenzsteuersatz;
+      if (kirchensteuer) effectiveRate *= 1.09; // ~9% Kirchensteuer
+      if (soli && grenzsteuersatz > 15) effectiveRate *= 1.055; // 5.5% Soli (above certain income)
+      
+      const steuerlast = einkuenfteVV > 0 ? einkuenfteVV * (effectiveRate / 100) : 0;
+      const steuerersparnis = einkuenfteVV < 0 ? Math.abs(einkuenfteVV) * (effectiveRate / 100) : 0;
+
+      // Cashflow comparison
+      const cashflowVorSteuer = kaltmiete - (p.monthlyPayment * 12) - grundsteuer - versicherung - Math.max(0, hausgeld) - hausverwaltung - instandhaltung;
+      const cashflowNachSteuer = cashflowVorSteuer - steuerlast + steuerersparnis;
+
+      return {
+        property: p,
+        details,
+        einnahmen: { kaltmiete, nebenkosten, sonstige: sonstigeEinnahmen, gesamt: gesamtEinnahmen },
+        werbungskosten: { afa, zinsen, grundsteuer, versicherung, hausgeld: Math.max(0, hausgeld), hausverwaltung, instandhaltung, fahrtkosten, sonstige, gesamt: gesamtWerbungskosten },
+        ergebnis: { einkuenfteVV, steuerlast, steuerersparnis, cashflowVorSteuer, cashflowNachSteuer },
+      };
+    });
+  }, [properties, propertyDetails, grenzsteuersatz, kirchensteuer, soli]);
+
+  // Totals
+  const totals = useMemo(() => {
+    return eurCalculations.reduce((acc, calc) => {
+      acc.einnahmen += calc.einnahmen.kaltmiete;
+      acc.werbungskosten += calc.werbungskosten.gesamt;
+      acc.einkuenfteVV += calc.ergebnis.einkuenfteVV;
+      acc.steuerlast += calc.ergebnis.steuerlast;
+      acc.steuerersparnis += calc.ergebnis.steuerersparnis;
+      acc.cashflowNachSteuer += calc.ergebnis.cashflowNachSteuer;
+      return acc;
+    }, { einnahmen: 0, werbungskosten: 0, einkuenfteVV: 0, steuerlast: 0, steuerersparnis: 0, cashflowNachSteuer: 0 });
+  }, [eurCalculations]);
+
+  const updatePropertyDetail = (propertyId: string, field: string, value: number) => {
+    setPropertyDetails(prev => ({
+      ...prev,
+      [propertyId]: {
+        ...prev[propertyId],
+        [field]: value,
+      },
+    }));
+  };
+
+  if (properties.filter(p => p.isRented).length === 0) {
+    return (
+      <Card className="text-center py-12">
+        <Receipt size={48} className="mx-auto text-slate-600 mb-4" />
+        <h3 className="text-xl font-bold text-white mb-2">Keine vermieteten Immobilien</h3>
+        <p className="text-slate-400">Füge vermietete Immobilien hinzu, um die EÜR zu berechnen.</p>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center gap-4 mb-6">
+        <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-500 to-pink-600 flex items-center justify-center">
+          <Receipt size={24} className="text-white" />
+        </div>
+        <div>
+          <h3 className="text-xl font-bold text-white">Einnahmen-Überschuss-Rechnung</h3>
+          <p className="text-slate-400 text-sm">Steuerliche Betrachtung Ihrer Mieteinnahmen</p>
+        </div>
+      </div>
+
+      {/* Tax Settings */}
+      <Card>
+        <h4 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+          <Calculator size={18} className="text-purple-400" /> Steuereinstellungen
+        </h4>
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div>
+            <label className="block text-sm text-slate-400 mb-1">Grenzsteuersatz (%)</label>
+            <Input
+              type="number"
+              value={grenzsteuersatz}
+              onChange={(e) => setGrenzsteuersatz(Number(e.target.value))}
+            />
+          </div>
+          <div className="flex items-center gap-3">
+            <input
+              type="checkbox"
+              id="kirchensteuer"
+              checked={kirchensteuer}
+              onChange={(e) => setKirchensteuer(e.target.checked)}
+              className="w-5 h-5 rounded border-slate-600 bg-slate-800 text-purple-500 focus:ring-purple-500"
+            />
+            <label htmlFor="kirchensteuer" className="text-slate-300">Kirchensteuer (~9%)</label>
+          </div>
+          <div className="flex items-center gap-3">
+            <input
+              type="checkbox"
+              id="soli"
+              checked={soli}
+              onChange={(e) => setSoli(e.target.checked)}
+              className="w-5 h-5 rounded border-slate-600 bg-slate-800 text-purple-500 focus:ring-purple-500"
+            />
+            <label htmlFor="soli" className="text-slate-300">Solidaritätszuschlag (5.5%)</label>
+          </div>
+          <div className="text-right">
+            <p className="text-slate-400 text-sm">Effektiver Steuersatz</p>
+            <p className="text-2xl font-bold text-purple-400">
+              {(grenzsteuersatz * (kirchensteuer ? 1.09 : 1) * (soli ? 1.055 : 1)).toFixed(1)}%
+            </p>
+          </div>
+        </div>
+      </Card>
+
+      {/* Summary */}
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+        <Card className="text-center">
+          <p className="text-slate-400 text-xs uppercase mb-1">Mieteinnahmen</p>
+          <p className="text-xl font-bold text-white"><Money value={totals.einnahmen} privacy={privacy} /></p>
+          <p className="text-xs text-slate-500">pro Jahr</p>
+        </Card>
+        <Card className="text-center">
+          <p className="text-slate-400 text-xs uppercase mb-1">Werbungskosten</p>
+          <p className="text-xl font-bold text-red-400"><Money value={totals.werbungskosten} privacy={privacy} /></p>
+          <p className="text-xs text-slate-500">pro Jahr</p>
+        </Card>
+        <Card className="text-center">
+          <p className="text-slate-400 text-xs uppercase mb-1">Einkünfte V+V</p>
+          <p className={`text-xl font-bold ${totals.einkuenfteVV >= 0 ? 'text-amber-400' : 'text-emerald-400'}`}>
+            <Money value={totals.einkuenfteVV} privacy={privacy} sign />
+          </p>
+          <p className="text-xs text-slate-500">steuerpflichtig</p>
+        </Card>
+        <Card className="text-center">
+          <p className="text-slate-400 text-xs uppercase mb-1">Steuerlast/-ersparnis</p>
+          <p className={`text-xl font-bold ${totals.steuerlast > 0 ? 'text-red-400' : 'text-emerald-400'}`}>
+            <Money value={totals.steuerersparnis - totals.steuerlast} privacy={privacy} sign />
+          </p>
+          <p className="text-xs text-slate-500">pro Jahr</p>
+        </Card>
+        <Card className="text-center">
+          <p className="text-slate-400 text-xs uppercase mb-1">Cashflow n. Steuer</p>
+          <p className={`text-xl font-bold ${totals.cashflowNachSteuer >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+            <Money value={totals.cashflowNachSteuer} privacy={privacy} sign />
+          </p>
+          <p className="text-xs text-slate-500">pro Jahr</p>
+        </Card>
+        <Card className="text-center">
+          <p className="text-slate-400 text-xs uppercase mb-1">Monatl. Netto</p>
+          <p className={`text-xl font-bold ${totals.cashflowNachSteuer >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+            <Money value={totals.cashflowNachSteuer / 12} privacy={privacy} sign />
+          </p>
+          <p className="text-xs text-slate-500">pro Monat</p>
+        </Card>
+      </div>
+
+      {/* Per Property EÜR */}
+      {eurCalculations.map(calc => (
+        <Card key={calc.property.id}>
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h4 className="text-lg font-semibold text-white">{calc.property.name}</h4>
+              <p className="text-slate-400 text-sm">{calc.property.address}</p>
+            </div>
+            <Badge className={calc.ergebnis.einkuenfteVV >= 0 ? 'bg-amber-500' : 'bg-emerald-500'}>
+              {calc.ergebnis.einkuenfteVV >= 0 ? 'Steuerpflichtig' : 'Steuermindernd'}
+            </Badge>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Einnahmen */}
+            <div>
+              <h5 className="text-sm font-semibold text-emerald-400 uppercase tracking-wide mb-3">Einnahmen</h5>
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Kaltmiete (12 × €{calc.property.monthlyRent})</span>
+                  <span className="text-white"><Money value={calc.einnahmen.kaltmiete} privacy={privacy} /></span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-400">Nebenkostenvorauszahlung</span>
+                  <Input
+                    type="number"
+                    value={calc.details.nebenkostenVorauszahlung}
+                    onChange={(e) => updatePropertyDetail(calc.property.id, 'nebenkostenVorauszahlung', Number(e.target.value))}
+                    className="w-24 text-right text-sm py-1"
+                  />
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-400">Sonstige Einnahmen</span>
+                  <Input
+                    type="number"
+                    value={calc.details.sonstigeEinnahmen}
+                    onChange={(e) => updatePropertyDetail(calc.property.id, 'sonstigeEinnahmen', Number(e.target.value))}
+                    className="w-24 text-right text-sm py-1"
+                  />
+                </div>
+                <div className="border-t border-slate-700 pt-2 flex justify-between font-semibold">
+                  <span className="text-slate-300">Gesamt Einnahmen</span>
+                  <span className="text-emerald-400"><Money value={calc.einnahmen.gesamt} privacy={privacy} /></span>
+                </div>
+              </div>
+            </div>
+
+            {/* Werbungskosten */}
+            <div>
+              <h5 className="text-sm font-semibold text-red-400 uppercase tracking-wide mb-3">Werbungskosten</h5>
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-slate-400">AfA ({calc.details.afaRate}% linear)</span>
+                  <span className="text-white"><Money value={calc.werbungskosten.afa} privacy={privacy} /></span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Schuldzinsen</span>
+                  <span className="text-white"><Money value={calc.werbungskosten.zinsen} privacy={privacy} /></span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Grundsteuer</span>
+                  <span className="text-white"><Money value={calc.werbungskosten.grundsteuer} privacy={privacy} /></span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Versicherung</span>
+                  <span className="text-white"><Money value={calc.werbungskosten.versicherung} privacy={privacy} /></span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-400">Hausverwaltung/Mo</span>
+                  <Input
+                    type="number"
+                    value={calc.details.hausverwaltung}
+                    onChange={(e) => updatePropertyDetail(calc.property.id, 'hausverwaltung', Number(e.target.value))}
+                    className="w-24 text-right text-sm py-1"
+                  />
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-400">Instandhaltung/Jahr</span>
+                  <Input
+                    type="number"
+                    value={calc.details.instandhaltung}
+                    onChange={(e) => updatePropertyDetail(calc.property.id, 'instandhaltung', Number(e.target.value))}
+                    className="w-24 text-right text-sm py-1"
+                  />
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-400">Fahrtkosten</span>
+                  <Input
+                    type="number"
+                    value={calc.details.fahrtkosten}
+                    onChange={(e) => updatePropertyDetail(calc.property.id, 'fahrtkosten', Number(e.target.value))}
+                    className="w-24 text-right text-sm py-1"
+                  />
+                </div>
+                <div className="border-t border-slate-700 pt-2 flex justify-between font-semibold">
+                  <span className="text-slate-300">Gesamt Werbungskosten</span>
+                  <span className="text-red-400"><Money value={calc.werbungskosten.gesamt} privacy={privacy} /></span>
+                </div>
+              </div>
+            </div>
+
+            {/* Ergebnis */}
+            <div>
+              <h5 className="text-sm font-semibold text-purple-400 uppercase tracking-wide mb-3">Ergebnis</h5>
+              <div className="space-y-3">
+                <div className="bg-slate-800 p-3 rounded-lg">
+                  <p className="text-slate-400 text-xs">Einkünfte aus V+V</p>
+                  <p className={`text-2xl font-bold ${calc.ergebnis.einkuenfteVV >= 0 ? 'text-amber-400' : 'text-emerald-400'}`}>
+                    <Money value={calc.ergebnis.einkuenfteVV} privacy={privacy} sign />
+                  </p>
+                </div>
+                {calc.ergebnis.einkuenfteVV >= 0 ? (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-slate-400">Steuerlast ({grenzsteuersatz}%)</span>
+                    <span className="text-red-400"><Money value={calc.ergebnis.steuerlast} privacy={privacy} /></span>
+                  </div>
+                ) : (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-slate-400">Steuerersparnis ({grenzsteuersatz}%)</span>
+                    <span className="text-emerald-400"><Money value={calc.ergebnis.steuerersparnis} privacy={privacy} /></span>
+                  </div>
+                )}
+                <div className="border-t border-slate-700 pt-3">
+                  <p className="text-slate-400 text-xs mb-1">Cashflow nach Steuern</p>
+                  <p className={`text-xl font-bold ${calc.ergebnis.cashflowNachSteuer >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                    <Money value={calc.ergebnis.cashflowNachSteuer} privacy={privacy} sign /> / Jahr
+                  </p>
+                  <p className="text-slate-400 text-sm">
+                    = <Money value={calc.ergebnis.cashflowNachSteuer / 12} privacy={privacy} sign /> / Monat
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </Card>
+      ))}
+
+      {/* Info Box */}
+      <Card className="bg-slate-800/50 border border-slate-700">
+        <h4 className="text-sm font-semibold text-white mb-2">Hinweise zur EÜR</h4>
+        <ul className="text-xs text-slate-400 space-y-1">
+          <li>• <strong>AfA (Absetzung für Abnutzung):</strong> Linear 2% für Gebäude ab 1925, 2.5% für ältere Gebäude (Bemessungsgrundlage: 80% des Kaufpreises)</li>
+          <li>• <strong>Schuldzinsen:</strong> Nur der Zinsanteil der Kreditrate ist absetzbar, nicht die Tilgung</li>
+          <li>• <strong>Negative Einkünfte:</strong> Können mit anderen Einkünften verrechnet werden und mindern die Gesamtsteuerlast</li>
+          <li>• <strong>Nebenkosten:</strong> Werden in der Regel 1:1 auf Mieter umgelegt und sind daher steuerneutral</li>
+          <li>• Diese Berechnung ersetzt keine Steuerberatung. Bitte konsultieren Sie einen Steuerberater für Ihre individuelle Situation.</li>
         </ul>
       </Card>
     </div>
