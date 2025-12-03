@@ -994,6 +994,7 @@ const PropertySimulator: React.FC<{
   // Simulation adjustments (deltas from current values)
   const [interestRateAdjust, setInterestRateAdjust] = useState(0); // ±% points
   const [valueAdjust, setValueAdjust] = useState(0); // ±% of current value
+  const [annualAppreciation, setAnnualAppreciation] = useState(2.0); // % per year
   const [rentAdjust, setRentAdjust] = useState(0); // ±% of current rent
   const [extraRepayment, setExtraRepayment] = useState(0); // €/year additional
   const [expenseAdjust, setExpenseAdjust] = useState(0); // ±% of expenses
@@ -1003,6 +1004,7 @@ const PropertySimulator: React.FC<{
   useEffect(() => {
     setInterestRateAdjust(0);
     setValueAdjust(0);
+    setAnnualAppreciation(2.0); // Default 2% per year
     setRentAdjust(0);
     setExtraRepayment(0);
     setExpenseAdjust(0);
@@ -1130,11 +1132,15 @@ const PropertySimulator: React.FC<{
     
     const currentYearlyPrincipal = (p.monthlyPrincipal * 12) + p.specialRepayment;
     const simYearlyPrincipal = (simulation.simulated.monthlyPrincipal * 12) + simulation.simulated.specialRepayment;
-    const appreciation = valueAdjust >= 0 ? 0.02 : -0.01; // Less appreciation if value decreasing
+    
+    // Use annual appreciation percentage (convert to decimal)
+    const appreciationRate = annualAppreciation / 100;
     
     for (let year = 0; year <= 20; year++) {
-      const currentValue = p.currentValue * Math.pow(1.02, year); // 2% appreciation
-      const simValue = simulation.simulated.value * Math.pow(1 + appreciation, year);
+      // Current scenario: base value with annual appreciation
+      const currentValue = p.currentValue * Math.pow(1 + appreciationRate, year);
+      // Simulated scenario: adjusted base value (from valueAdjust slider) with annual appreciation
+      const simValue = simulation.simulated.value * Math.pow(1 + appreciationRate, year);
       
       data.push({
         year: new Date().getFullYear() + year,
@@ -1142,6 +1148,8 @@ const PropertySimulator: React.FC<{
         simEquity: Math.round(simValue - Math.max(0, simDebt)),
         currentDebt: Math.round(Math.max(0, currentDebt)),
         simDebt: Math.round(Math.max(0, simDebt)),
+        currentValue: Math.round(currentValue),
+        simValue: Math.round(simValue),
       });
       
       currentDebt = Math.max(0, currentDebt - currentYearlyPrincipal);
@@ -1149,7 +1157,7 @@ const PropertySimulator: React.FC<{
     }
     
     return data;
-  }, [selectedProperty, simulation, valueAdjust]);
+  }, [selectedProperty, simulation, valueAdjust, annualAppreciation]);
 
   if (properties.length === 0) {
     return (
@@ -1249,6 +1257,31 @@ const PropertySimulator: React.FC<{
                 <span>Aktuell</span>
                 <span>+50%</span>
               </div>
+            </div>
+
+            {/* Annual Appreciation */}
+            <div>
+              <div className="flex justify-between mb-2">
+                <label className="text-sm text-slate-400">Wertsteigerung pro Jahr</label>
+                <span className="font-bold text-emerald-400">
+                  {annualAppreciation >= 0 ? '+' : ''}{annualAppreciation.toFixed(1)}%
+                </span>
+              </div>
+              <input
+                type="range"
+                min="-2"
+                max="8"
+                step="0.25"
+                value={annualAppreciation}
+                onChange={(e) => setAnnualAppreciation(Number(e.target.value))}
+                className="w-full accent-emerald-500 h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer"
+              />
+              <div className="flex justify-between text-[10px] text-slate-500 mt-1">
+                <span>-2%</span>
+                <span>2%</span>
+                <span>8%</span>
+              </div>
+              <p className="text-xs text-slate-500 mt-1">Wertsteigerung pro Jahr in der Projektion</p>
             </div>
 
             {/* Monthly Rent */}
@@ -1362,6 +1395,7 @@ const PropertySimulator: React.FC<{
             onClick={() => {
               setInterestRateAdjust(0);
               setValueAdjust(0);
+              setAnnualAppreciation(2.0);
               setRentAdjust(0);
               setExtraRepayment(0);
               setExpenseAdjust(0);
@@ -1451,6 +1485,37 @@ const PropertySimulator: React.FC<{
                   <Money value={simulation.simulated.specialRepayment} privacy={privacy} fractionDigits={0} />
                 </span>
               </div>
+              {annualAppreciation !== 0 && (
+                <>
+                  <div className="border-t border-slate-700 pt-3 mt-3">
+                    <p className="text-slate-400 text-xs mb-2">Prognose Eigenkapital (bei {annualAppreciation >= 0 ? '+' : ''}{annualAppreciation.toFixed(1)}% Wertsteigerung/Jahr):</p>
+                    <div className="flex justify-between mt-2">
+                      <span className="text-slate-400">Nach 5 Jahren:</span>
+                      <span className="text-emerald-400 font-semibold">
+                        <Money value={(() => {
+                          const p = selectedProperty!;
+                          const futureValue = simulation.simulated.value * Math.pow(1 + annualAppreciation / 100, 5);
+                          const yearlyPrincipal = (simulation.simulated.monthlyPrincipal * 12) + simulation.simulated.specialRepayment;
+                          const remainingDebt = Math.max(0, p.loanAmount - (yearlyPrincipal * 5));
+                          return futureValue - remainingDebt;
+                        })()} privacy={privacy} fractionDigits={0} />
+                      </span>
+                    </div>
+                    <div className="flex justify-between mt-1">
+                      <span className="text-slate-400">Nach 10 Jahren:</span>
+                      <span className="text-emerald-400 font-semibold">
+                        <Money value={(() => {
+                          const p = selectedProperty!;
+                          const futureValue = simulation.simulated.value * Math.pow(1 + annualAppreciation / 100, 10);
+                          const yearlyPrincipal = (simulation.simulated.monthlyPrincipal * 12) + simulation.simulated.specialRepayment;
+                          const remainingDebt = Math.max(0, p.loanAmount - (yearlyPrincipal * 10));
+                          return futureValue - remainingDebt;
+                        })()} privacy={privacy} fractionDigits={0} />
+                      </span>
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
           </Card>
         </div>
