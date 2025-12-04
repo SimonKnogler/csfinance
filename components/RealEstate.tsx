@@ -13,8 +13,6 @@ import {
   Wallet,
   PiggyBank,
   Calculator,
-  ChevronDown,
-  ChevronUp,
   SlidersHorizontal,
   LayoutGrid,
   HardHat,
@@ -28,6 +26,8 @@ import {
   Shield,
   Percent,
   FileText,
+  Loader2,
+  CheckCircle,
   Clock,
   CheckCircle2,
   Users
@@ -59,7 +59,7 @@ import {
   Line,
   Cell
 } from 'recharts';
-import { RealEstateProperty, PortfolioOwner } from '../types';
+import { RealEstateProperty, PortfolioOwner, BusinessPlanData } from '../types';
 import { StorageService } from '../services/storageService';
 import { Card, Button, Input, Select, Badge, Money } from './UIComponents';
 
@@ -3690,6 +3690,8 @@ const DEFAULT_NEBENKOSTEN: NebenkostenItem[] = [
   { id: 'sonstiges', name: 'Sonstiges & Puffer', amount: 0, description: 'Unvorhergesehenes' },
 ];
 
+const BUSINESS_PLAN_ID = 'default-businessplan';
+
 const BusinessPlanCalculator: React.FC<{ privacy: boolean }> = ({ privacy }) => {
   // State for collapsible sections
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
@@ -3700,6 +3702,11 @@ const BusinessPlanCalculator: React.FC<{ privacy: boolean }> = ({ privacy }) => 
     timeline: false,
     risk: false,
   });
+
+  // Loading state
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [lastSaved, setLastSaved] = useState<string | null>(null);
 
   // Costs state
   const [costs, setCosts] = useState<BusinessPlanCost[]>(DEFAULT_BP_COSTS);
@@ -3723,6 +3730,74 @@ const BusinessPlanCalculator: React.FC<{ privacy: boolean }> = ({ privacy }) => 
 
   // Operating expenses
   const [bewirtschaftungskostenPercent, setBewirtschaftungskostenPercent] = useState(25);
+
+  // Load saved data on mount
+  useEffect(() => {
+    const loadData = async () => {
+      setIsLoading(true);
+      try {
+        const plans = await StorageService.getBusinessPlans();
+        const savedPlan = plans.find(p => p.id === BUSINESS_PLAN_ID);
+        
+        if (savedPlan) {
+          setCosts(savedPlan.costs as BusinessPlanCost[]);
+          setNebenkostenItems(savedPlan.nebenkostenItems as NebenkostenItem[]);
+          setBaukostenzuschuss(savedPlan.baukostenzuschuss);
+          setUnits(savedPlan.units as UnitConfig[]);
+          setEigenkapital(savedPlan.eigenkapital);
+          setZinssatz(savedPlan.zinssatz);
+          setTilgung(savedPlan.tilgung);
+          setZinsbindung(savedPlan.zinsbindung);
+          setBewirtschaftungskostenPercent(savedPlan.bewirtschaftungskostenPercent);
+          setCostOverrun(savedPlan.costOverrun);
+          setVacancyMonths(savedPlan.vacancyMonths);
+          setFutureInterestIncrease(savedPlan.futureInterestIncrease);
+          setLastSaved(savedPlan.lastUpdated);
+        }
+      } catch (e) {
+        console.error("Failed to load business plan:", e);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    loadData();
+  }, []);
+
+  // Auto-save when data changes (debounced)
+  useEffect(() => {
+    if (isLoading) return; // Don't save while loading
+
+    const saveTimeout = setTimeout(async () => {
+      setIsSaving(true);
+      try {
+        const planData: BusinessPlanData = {
+          id: BUSINESS_PLAN_ID,
+          name: 'Businessplan Mehrfamilienhaus',
+          lastUpdated: new Date().toISOString(),
+          costs: costs.map(c => ({ id: c.id, name: c.name, amount: c.amount, description: c.description })),
+          nebenkostenItems: nebenkostenItems.map(n => ({ id: n.id, name: n.name, amount: n.amount, description: n.description })),
+          baukostenzuschuss,
+          units: units.map(u => ({ id: u.id, name: u.name, size: u.size, monthlyRent: u.monthlyRent, marketValue: u.marketValue, isOwned: u.isOwned })),
+          eigenkapital,
+          zinssatz,
+          tilgung,
+          zinsbindung,
+          bewirtschaftungskostenPercent,
+          costOverrun,
+          vacancyMonths,
+          futureInterestIncrease,
+        };
+        await StorageService.saveBusinessPlan(planData);
+        setLastSaved(planData.lastUpdated);
+      } catch (e) {
+        console.error("Failed to save business plan:", e);
+      } finally {
+        setIsSaving(false);
+      }
+    }, 1000); // 1 second debounce
+
+    return () => clearTimeout(saveTimeout);
+  }, [costs, nebenkostenItems, baukostenzuschuss, units, eigenkapital, zinssatz, tilgung, zinsbindung, bewirtschaftungskostenPercent, costOverrun, vacancyMonths, futureInterestIncrease, isLoading]);
 
   // Toggle section
   const toggleSection = (id: string) => {
@@ -3892,16 +3967,42 @@ const BusinessPlanCalculator: React.FC<{ privacy: boolean }> = ({ privacy }) => 
     return 'text-red-400';
   };
 
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="w-8 h-8 text-primary animate-spin" />
+        <span className="ml-3 text-slate-400">Lade Businessplan...</span>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center gap-4 mb-6">
-        <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
-          <FileText size={24} className="text-white" />
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center gap-4">
+          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
+            <FileText size={24} className="text-white" />
+          </div>
+          <div>
+            <h2 className="text-xl font-bold text-white">Businessplan Mehrfamilienhaus</h2>
+            <p className="text-slate-400 text-sm">Interaktive Kalkulation für Ihr Bauprojekt</p>
+          </div>
         </div>
-        <div>
-          <h2 className="text-xl font-bold text-white">Businessplan Mehrfamilienhaus</h2>
-          <p className="text-slate-400 text-sm">Interaktive Kalkulation für Ihr Bauprojekt</p>
+        
+        {/* Save Status */}
+        <div className="flex items-center gap-2">
+          {isSaving ? (
+            <div className="flex items-center gap-2 text-amber-400 text-sm">
+              <Loader2 size={16} className="animate-spin" />
+              Speichern...
+            </div>
+          ) : lastSaved ? (
+            <div className="flex items-center gap-2 text-emerald-400 text-sm">
+              <CheckCircle size={16} />
+              Gespeichert
+            </div>
+          ) : null}
         </div>
       </div>
 

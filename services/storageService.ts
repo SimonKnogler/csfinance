@@ -1,5 +1,5 @@
 
-import { Transaction, StockHolding, PortfolioDocument, User, CashHolding, RealEstateProperty, RecurringEntry } from '../types';
+import { Transaction, StockHolding, PortfolioDocument, User, CashHolding, RealEstateProperty, RecurringEntry, BusinessPlanData } from '../types';
 import { getInitialPortfolio } from './yahooFinanceService';
 import { IDBService } from './idbService';
 import { CloudService } from './cloudService';
@@ -296,6 +296,40 @@ export const StorageService = {
         }
     }
     return await IDBService.getAll<PortfolioDocument>('documents');
+  },
+
+  // --- BUSINESS PLANS ---
+  saveBusinessPlan: async (plan: BusinessPlanData) => {
+    await IDBService.put('businessPlans', plan);
+    if (CloudService.getConfig()) {
+      CloudService.saveItem('businessPlans', plan)
+        .catch(e => console.error("Cloud business plan sync failed:", e));
+    }
+  },
+
+  getBusinessPlans: async (): Promise<BusinessPlanData[]> => {
+    if (CloudService.getConfig()) {
+      try {
+        const cloudData = await CloudService.getAll<BusinessPlanData>('businessPlans');
+        if (cloudData.length > 0) {
+          await IDBService.clear('businessPlans');
+          const promises = cloudData.map(p => IDBService.put('businessPlans', p));
+          await Promise.all(promises);
+          return cloudData;
+        }
+      } catch (e) {
+        console.warn("Could not reach cloud for business plans, falling back to local.", e);
+      }
+    }
+    return await IDBService.getAll<BusinessPlanData>('businessPlans');
+  },
+
+  deleteBusinessPlan: async (id: string) => {
+    await IDBService.delete('businessPlans', id);
+    if (CloudService.getConfig()) {
+      CloudService.deleteItem('businessPlans', id)
+        .catch(e => console.error("Cloud business plan delete failed:", e));
+    }
   },
 
   // --- DATA MANAGEMENT ---

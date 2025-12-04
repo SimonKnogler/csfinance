@@ -175,3 +175,44 @@ export interface RecurringEntry {
   isActive: boolean;
   notes?: string;
 }
+
+// --- BUSINESS PLAN TYPES ---
+
+export interface BusinessPlanCostItem {
+  id: string;
+  name: string;
+  amount: number;
+  description?: string;
+}
+
+export interface BusinessPlanUnit {
+  id: string;
+  name: string;
+  size: number;
+  monthlyRent: number;
+  marketValue: number;
+  isOwned: boolean;
+}
+
+export interface BusinessPlanData {
+  id: string;
+  name: string;
+  lastUpdated: string;
+  // Costs
+  costs: BusinessPlanCostItem[];
+  nebenkostenItems: BusinessPlanCostItem[];
+  baukostenzuschuss: number;
+  // Units
+  units: BusinessPlanUnit[];
+  // Financing
+  eigenkapital: number;
+  zinssatz: number;
+  tilgung: number;
+  zinsbindung: number;
+  // Operating expenses
+  bewirtschaftungskostenPercent: number;
+  // Risk
+  costOverrun: number;
+  vacancyMonths: number;
+  futureInterestIncrease: number;
+}
