@@ -204,6 +204,7 @@ export interface BusinessPlanData {
   baukostenzuschuss: number;
   // Units
   units: BusinessPlanUnit[];
+  pricePerSqm: number;
   // Financing
   eigenkapital: number;
   zinssatz: number;

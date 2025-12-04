@@ -36,11 +36,9 @@ import {
 enum SubView {
   OVERVIEW = 'Übersicht',
   BUSINESSPLAN = 'Businessplan',
-  KAUFANALYSE = 'Kaufanalyse',
-  RISIKO = 'Risiko',
   STEUER_EUR = 'Steuer EÜR',
   SIMULATOR = 'Simulator',
-  BAUKOSTEN = 'Baukosten',
+  DOKUMENT = 'Dokument',
 }
 import { 
   ResponsiveContainer, 
@@ -221,22 +219,6 @@ export const RealEstate: React.FC<RealEstateProps> = ({ privacy }) => {
               <FileText size={16} /> Businessplan
             </button>
             <button
-              onClick={() => setSubView(SubView.KAUFANALYSE)}
-              className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-                subView === SubView.KAUFANALYSE ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              <ShoppingCart size={16} /> Kaufanalyse
-            </button>
-            <button
-              onClick={() => setSubView(SubView.RISIKO)}
-              className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-                subView === SubView.RISIKO ? 'bg-red-600 text-white' : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              <AlertTriangle size={16} /> Risiko
-            </button>
-            <button
               onClick={() => setSubView(SubView.STEUER_EUR)}
               className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
                 subView === SubView.STEUER_EUR ? 'bg-purple-600 text-white' : 'text-slate-400 hover:text-white'
@@ -253,12 +235,12 @@ export const RealEstate: React.FC<RealEstateProps> = ({ privacy }) => {
               <SlidersHorizontal size={16} /> Simulator
             </button>
             <button
-              onClick={() => setSubView(SubView.BAUKOSTEN)}
+              onClick={() => setSubView(SubView.DOKUMENT)}
               className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-                subView === SubView.BAUKOSTEN ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'
+                subView === SubView.DOKUMENT ? 'bg-teal-600 text-white' : 'text-slate-400 hover:text-white'
               }`}
             >
-              <HardHat size={16} /> Baukosten
+              <FileText size={16} /> PDF Export
             </button>
           </div>
           {subView === SubView.OVERVIEW && (
@@ -370,15 +352,6 @@ export const RealEstate: React.FC<RealEstateProps> = ({ privacy }) => {
       )}
 
       {/* KAUFANALYSE VIEW */}
-      {subView === SubView.KAUFANALYSE && (
-        <PurchaseAnalyzer properties={properties} privacy={privacy} />
-      )}
-
-      {/* RISIKO VIEW */}
-      {subView === SubView.RISIKO && (
-        <RiskAnalyzer properties={properties} privacy={privacy} />
-      )}
-
       {/* BUSINESSPLAN VIEW */}
       {subView === SubView.BUSINESSPLAN && (
         <BusinessPlanCalculator privacy={privacy} />
@@ -389,9 +362,9 @@ export const RealEstate: React.FC<RealEstateProps> = ({ privacy }) => {
         <TaxEURCalculator properties={properties} privacy={privacy} />
       )}
 
-      {/* BAUKOSTEN VIEW */}
-      {subView === SubView.BAUKOSTEN && (
-        <BuildingCostSimulator privacy={privacy} />
+      {/* DOKUMENT VIEW */}
+      {subView === SubView.DOKUMENT && (
+        <BusinessPlanDocument privacy={privacy} />
       )}
 
       {/* Add/Edit Modal */}
@@ -1630,1609 +1603,6 @@ const PropertySimulator: React.FC<{
   );
 };
 
-// --- Building Cost Simulator ---
-interface CostCategory {
-  id: string;
-  name: string;
-  description: string;
-  pricePerSqm: number;
-  quantity: number;
-  unit: string;
-  isEnabled: boolean;
-}
-
-interface BuildingScenario {
-  id: string;
-  name: string;
-  categories: CostCategory[];
-  landPrice: number;
-  buildingSize: number;
-  contingency: number;
-}
-
-const DEFAULT_CATEGORIES: CostCategory[] = [
-  { id: 'demolition', name: 'Abriss/Rückbau', description: 'Bestehendes Gebäude entfernen', pricePerSqm: 80, quantity: 0, unit: 'm²', isEnabled: false },
-  { id: 'basement', name: 'Keller', description: 'Untergeschoss inkl. Abdichtung', pricePerSqm: 600, quantity: 0, unit: 'm²', isEnabled: false },
-  { id: 'foundation', name: 'Bodenplatte', description: 'Alternative zum Keller', pricePerSqm: 180, quantity: 0, unit: 'm²', isEnabled: true },
-  { id: 'shell-traditional', name: 'Rohbau (Massiv)', description: 'Traditionelle Bauweise', pricePerSqm: 650, quantity: 0, unit: 'm²', isEnabled: true },
-  { id: 'shell-prefab', name: 'Rohbau (Fertighaus)', description: 'Fertighausbau', pricePerSqm: 550, quantity: 0, unit: 'm²', isEnabled: false },
-  { id: 'roof', name: 'Dach', description: 'Dachstuhl + Eindeckung', pricePerSqm: 180, quantity: 0, unit: 'm² Dach', isEnabled: true },
-  { id: 'windows', name: 'Fenster & Türen', description: 'Fenster, Haustür, Innentüren', pricePerSqm: 120, quantity: 0, unit: 'm² Wohnfl.', isEnabled: true },
-  { id: 'facade', name: 'Fassade & Dämmung', description: 'Außenputz, WDVS', pricePerSqm: 140, quantity: 0, unit: 'm² Fassade', isEnabled: true },
-  { id: 'electrical', name: 'Elektrik', description: 'Elektroinstallation komplett', pricePerSqm: 85, quantity: 0, unit: 'm² Wohnfl.', isEnabled: true },
-  { id: 'plumbing', name: 'Sanitär', description: 'Wasserinstallation, Bäder', pricePerSqm: 95, quantity: 0, unit: 'm² Wohnfl.', isEnabled: true },
-  { id: 'heating', name: 'Heizung', description: 'Wärmepumpe/Gas + Fußbodenheizung', pricePerSqm: 110, quantity: 0, unit: 'm² Wohnfl.', isEnabled: true },
-  { id: 'drywall', name: 'Trockenbau', description: 'Wände, Decken, Dämmung', pricePerSqm: 65, quantity: 0, unit: 'm² Wohnfl.', isEnabled: true },
-  { id: 'floors', name: 'Bodenbeläge', description: 'Parkett, Fliesen, Estrich', pricePerSqm: 75, quantity: 0, unit: 'm² Wohnfl.', isEnabled: true },
-  { id: 'painting', name: 'Malerarbeiten', description: 'Innenputz, Streichen', pricePerSqm: 35, quantity: 0, unit: 'm² Wohnfl.', isEnabled: true },
-  { id: 'kitchen', name: 'Küche', description: 'Einbauküche komplett', pricePerSqm: 0, quantity: 15000, unit: '€ pauschal', isEnabled: true },
-  { id: 'parking', name: 'Stellplätze', description: 'Carport oder Garage', pricePerSqm: 0, quantity: 15000, unit: '€/Stellplatz', isEnabled: false },
-  { id: 'garden', name: 'Garten & Außenanlage', description: 'Terrasse, Rasen, Zaun', pricePerSqm: 45, quantity: 0, unit: 'm² Garten', isEnabled: false },
-  { id: 'driveway', name: 'Einfahrt & Wege', description: 'Pflaster, Asphalt', pricePerSqm: 80, quantity: 0, unit: 'm²', isEnabled: false },
-];
-
-const ANCILLARY_COSTS = [
-  { id: 'notar', name: 'Notar & Grundbuch', percent: 2.0 },
-  { id: 'grunderwerbsteuer', name: 'Grunderwerbsteuer', percent: 6.5 }, // Bayern: 3.5%, NRW: 6.5%
-  { id: 'makler', name: 'Maklerprovision', percent: 3.57 },
-  { id: 'architekt', name: 'Architekt/Planer', percent: 10.0 },
-  { id: 'baugenehmigung', name: 'Baugenehmigung', percent: 0.5 },
-  { id: 'bauleitung', name: 'Bauleitung', percent: 3.0 },
-  { id: 'versicherung', name: 'Bauversicherungen', percent: 0.3 },
-];
-
-const BuildingCostSimulator: React.FC<{ privacy: boolean }> = ({ privacy }) => {
-  // Scenarios for comparison
-  const [scenarios, setScenarios] = useState<BuildingScenario[]>([
-    {
-      id: '1',
-      name: 'Szenario 1',
-      categories: DEFAULT_CATEGORIES.map(c => ({ ...c, quantity: c.pricePerSqm > 0 ? 150 : c.quantity })),
-      landPrice: 150000,
-      buildingSize: 150,
-      contingency: 10,
-    }
-  ]);
-  
-  const [activeScenarioId, setActiveScenarioId] = useState('1');
-  const [grunderwerbsteuerRate, setGrunderwerbsteuerRate] = useState(6.5);
-  
-  const activeScenario = scenarios.find(s => s.id === activeScenarioId) || scenarios[0];
-  
-  // Calculate costs for a scenario
-  const calculateCosts = (scenario: BuildingScenario) => {
-    let buildingCosts = 0;
-    const breakdown: { name: string; cost: number }[] = [];
-    
-    scenario.categories.forEach(cat => {
-      if (!cat.isEnabled) return;
-      
-      let cost = 0;
-      if (cat.unit === '€ pauschal' || cat.unit === '€/Stellplatz') {
-        cost = cat.quantity;
-      } else if (cat.unit === 'm² Wohnfl.') {
-        cost = cat.pricePerSqm * scenario.buildingSize;
-      } else {
-        cost = cat.pricePerSqm * cat.quantity;
-      }
-      
-      if (cost > 0) {
-        buildingCosts += cost;
-        breakdown.push({ name: cat.name, cost });
-      }
-    });
-    
-    // Ancillary costs
-    const totalBase = scenario.landPrice + buildingCosts;
-    let ancillaryCosts = 0;
-    const ancillaryBreakdown: { name: string; cost: number }[] = [];
-    
-    ANCILLARY_COSTS.forEach(cost => {
-      let rate = cost.percent;
-      if (cost.id === 'grunderwerbsteuer') {
-        rate = grunderwerbsteuerRate;
-      }
-      const amount = (cost.id === 'makler' || cost.id === 'notar' || cost.id === 'grunderwerbsteuer')
-        ? scenario.landPrice * (rate / 100)
-        : buildingCosts * (rate / 100);
-      ancillaryCosts += amount;
-      ancillaryBreakdown.push({ name: cost.name, cost: amount });
-    });
-    
-    // Contingency
-    const contingencyAmount = buildingCosts * (scenario.contingency / 100);
-    
-    return {
-      landPrice: scenario.landPrice,
-      buildingCosts,
-      ancillaryCosts,
-      contingencyAmount,
-      totalCost: scenario.landPrice + buildingCosts + ancillaryCosts + contingencyAmount,
-      breakdown,
-      ancillaryBreakdown,
-      pricePerSqm: Math.round((scenario.landPrice + buildingCosts + ancillaryCosts + contingencyAmount) / scenario.buildingSize),
-    };
-  };
-  
-  const costs = calculateCosts(activeScenario);
-  
-  // Update category in active scenario
-  const updateCategory = (categoryId: string, updates: Partial<CostCategory>) => {
-    setScenarios(prev => prev.map(s => {
-      if (s.id !== activeScenarioId) return s;
-      return {
-        ...s,
-        categories: s.categories.map(c => 
-          c.id === categoryId ? { ...c, ...updates } : c
-        )
-      };
-    }));
-  };
-  
-  // Update scenario settings
-  const updateScenario = (updates: Partial<BuildingScenario>) => {
-    setScenarios(prev => prev.map(s => 
-      s.id === activeScenarioId ? { ...s, ...updates } : s
-    ));
-  };
-  
-  // Add new scenario
-  const addScenario = () => {
-    const newId = Date.now().toString();
-    setScenarios(prev => [...prev, {
-      id: newId,
-      name: `Szenario ${prev.length + 1}`,
-      categories: DEFAULT_CATEGORIES.map(c => ({ ...c, quantity: c.pricePerSqm > 0 ? 150 : c.quantity })),
-      landPrice: 150000,
-      buildingSize: 150,
-      contingency: 10,
-    }]);
-    setActiveScenarioId(newId);
-  };
-  
-  // Duplicate scenario
-  const duplicateScenario = () => {
-    const newId = Date.now().toString();
-    setScenarios(prev => [...prev, {
-      ...activeScenario,
-      id: newId,
-      name: `${activeScenario.name} (Kopie)`,
-    }]);
-    setActiveScenarioId(newId);
-  };
-  
-  // Delete scenario
-  const deleteScenario = (id: string) => {
-    if (scenarios.length <= 1) return;
-    setScenarios(prev => prev.filter(s => s.id !== id));
-    if (activeScenarioId === id) {
-      setActiveScenarioId(scenarios.find(s => s.id !== id)?.id || '1');
-    }
-  };
-  
-  // Comparison data
-  const comparisonData = scenarios.map(s => {
-    const c = calculateCosts(s);
-    return {
-      name: s.name,
-      Grundstück: c.landPrice,
-      Baukosten: c.buildingCosts,
-      Nebenkosten: c.ancillaryCosts,
-      Reserve: c.contingencyAmount,
-      Gesamt: c.totalCost,
-    };
-  });
-  
-  return (
-    <div className="space-y-6">
-      {/* Scenario Tabs */}
-      <div className="flex flex-wrap items-center gap-2">
-        {scenarios.map(s => (
-          <button
-            key={s.id}
-            onClick={() => setActiveScenarioId(s.id)}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-              s.id === activeScenarioId 
-                ? 'bg-blue-600 text-white' 
-                : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
-            }`}
-          >
-            {s.name}
-            {scenarios.length > 1 && s.id === activeScenarioId && (
-              <button
-                onClick={(e) => { e.stopPropagation(); deleteScenario(s.id); }}
-                className="ml-2 text-slate-400 hover:text-red-400"
-              >
-                <X size={14} />
-              </button>
-            )}
-          </button>
-        ))}
-        <button
-          onClick={addScenario}
-          className="px-3 py-2 rounded-lg bg-slate-800 text-slate-400 hover:text-white hover:bg-slate-700 transition-colors"
-        >
-          <Plus size={16} />
-        </button>
-        <button
-          onClick={duplicateScenario}
-          className="px-3 py-2 rounded-lg bg-slate-800 text-slate-400 hover:text-white hover:bg-slate-700 transition-colors"
-          title="Szenario duplizieren"
-        >
-          <Copy size={16} />
-        </button>
-      </div>
-      
-      {/* Basic Settings */}
-      <Card>
-        <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-          <Building2 size={20} /> Grundeinstellungen: {activeScenario.name}
-        </h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div>
-            <label className="text-sm text-slate-400 mb-1 block">Szenario-Name</label>
-            <Input
-              value={activeScenario.name}
-              onChange={(e) => updateScenario({ name: e.target.value })}
-              className="w-full"
-            />
-          </div>
-          <div>
-            <label className="text-sm text-slate-400 mb-1 block">Grundstückspreis (€)</label>
-            <Input
-              type="number"
-              value={activeScenario.landPrice}
-              onChange={(e) => updateScenario({ landPrice: Number(e.target.value) })}
-              className="w-full"
-            />
-          </div>
-          <div>
-            <label className="text-sm text-slate-400 mb-1 block">Wohnfläche (m²)</label>
-            <Input
-              type="number"
-              value={activeScenario.buildingSize}
-              onChange={(e) => updateScenario({ buildingSize: Number(e.target.value) })}
-              className="w-full"
-            />
-          </div>
-          <div>
-            <label className="text-sm text-slate-400 mb-1 block">Reserve/Puffer (%)</label>
-            <Input
-              type="number"
-              value={activeScenario.contingency}
-              onChange={(e) => updateScenario({ contingency: Number(e.target.value) })}
-              min={0}
-              max={30}
-              className="w-full"
-            />
-          </div>
-        </div>
-        <div className="mt-4">
-          <label className="text-sm text-slate-400 mb-1 block">Grunderwerbsteuer (%)</label>
-          <div className="flex gap-2">
-            {[3.5, 5.0, 6.0, 6.5].map(rate => (
-              <button
-                key={rate}
-                onClick={() => setGrunderwerbsteuerRate(rate)}
-                className={`px-3 py-1 rounded text-sm ${
-                  grunderwerbsteuerRate === rate 
-                    ? 'bg-blue-600 text-white' 
-                    : 'bg-slate-700 text-slate-300'
-                }`}
-              >
-                {rate}%
-              </button>
-            ))}
-          </div>
-          <p className="text-xs text-slate-500 mt-1">Bayern 3.5%, Sachsen 5.5%, NRW/Schl.-H. 6.5%</p>
-        </div>
-      </Card>
-      
-      {/* Summary Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Card className="text-center border-l-4 border-l-emerald-500">
-          <p className="text-slate-400 text-xs uppercase mb-1">Grundstück</p>
-          <p className="text-xl font-bold text-emerald-400">
-            {privacy ? '****' : `€${costs.landPrice.toLocaleString()}`}
-          </p>
-        </Card>
-        <Card className="text-center border-l-4 border-l-blue-500">
-          <p className="text-slate-400 text-xs uppercase mb-1">Baukosten</p>
-          <p className="text-xl font-bold text-blue-400">
-            {privacy ? '****' : `€${costs.buildingCosts.toLocaleString()}`}
-          </p>
-        </Card>
-        <Card className="text-center border-l-4 border-l-amber-500">
-          <p className="text-slate-400 text-xs uppercase mb-1">Nebenkosten</p>
-          <p className="text-xl font-bold text-amber-400">
-            {privacy ? '****' : `€${Math.round(costs.ancillaryCosts).toLocaleString()}`}
-          </p>
-        </Card>
-        <Card className="text-center border-l-4 border-l-purple-500">
-          <p className="text-slate-400 text-xs uppercase mb-1">Gesamtkosten</p>
-          <p className="text-xl font-bold text-purple-400">
-            {privacy ? '****' : `€${Math.round(costs.totalCost).toLocaleString()}`}
-          </p>
-          <p className="text-xs text-slate-500">{privacy ? '****' : `€${costs.pricePerSqm}/m²`}</p>
-        </Card>
-      </div>
-      
-      {/* Cost Categories */}
-      <Card>
-        <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-          <HardHat size={20} /> Baukosten nach Gewerk
-        </h3>
-        <div className="space-y-2">
-          {activeScenario.categories.map(cat => (
-            <div 
-              key={cat.id} 
-              className={`grid grid-cols-12 gap-2 items-center p-3 rounded-lg transition-colors ${
-                cat.isEnabled ? 'bg-slate-800' : 'bg-slate-800/30'
-              }`}
-            >
-              <div className="col-span-1">
-                <input
-                  type="checkbox"
-                  checked={cat.isEnabled}
-                  onChange={(e) => updateCategory(cat.id, { isEnabled: e.target.checked })}
-                  className="w-4 h-4 rounded border-slate-600 bg-slate-700 text-blue-500"
-                />
-              </div>
-              <div className="col-span-3">
-                <p className={`font-medium ${cat.isEnabled ? 'text-white' : 'text-slate-500'}`}>{cat.name}</p>
-                <p className="text-xs text-slate-500">{cat.description}</p>
-              </div>
-              <div className="col-span-2">
-                <Input
-                  type="number"
-                  value={cat.pricePerSqm}
-                  onChange={(e) => updateCategory(cat.id, { pricePerSqm: Number(e.target.value) })}
-                  disabled={!cat.isEnabled || cat.unit === '€ pauschal' || cat.unit === '€/Stellplatz'}
-                  className="w-full text-sm"
-                />
-                <p className="text-xs text-slate-500">€/{cat.unit.includes('m²') ? 'm²' : 'Einheit'}</p>
-              </div>
-              <div className="col-span-2">
-                <Input
-                  type="number"
-                  value={cat.unit === 'm² Wohnfl.' ? activeScenario.buildingSize : cat.quantity}
-                  onChange={(e) => updateCategory(cat.id, { quantity: Number(e.target.value) })}
-                  disabled={!cat.isEnabled || cat.unit === 'm² Wohnfl.'}
-                  className="w-full text-sm"
-                />
-                <p className="text-xs text-slate-500">{cat.unit}</p>
-              </div>
-              <div className="col-span-2 text-right">
-                <p className={`font-semibold ${cat.isEnabled ? 'text-blue-400' : 'text-slate-600'}`}>
-                  {privacy ? '****' : `€${(() => {
-                    if (!cat.isEnabled) return 0;
-                    if (cat.unit === '€ pauschal' || cat.unit === '€/Stellplatz') return cat.quantity;
-                    if (cat.unit === 'm² Wohnfl.') return cat.pricePerSqm * activeScenario.buildingSize;
-                    return cat.pricePerSqm * cat.quantity;
-                  })().toLocaleString()}`}
-                </p>
-              </div>
-              <div className="col-span-2">
-                <div className="h-2 bg-slate-700 rounded-full overflow-hidden">
-                  <div 
-                    className="h-full bg-blue-500 rounded-full transition-all"
-                    style={{ 
-                      width: `${Math.min(100, ((() => {
-                        if (!cat.isEnabled) return 0;
-                        if (cat.unit === '€ pauschal' || cat.unit === '€/Stellplatz') return cat.quantity;
-                        if (cat.unit === 'm² Wohnfl.') return cat.pricePerSqm * activeScenario.buildingSize;
-                        return cat.pricePerSqm * cat.quantity;
-                      })() / costs.buildingCosts) * 100)}%` 
-                    }}
-                  />
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </Card>
-      
-      {/* Ancillary Costs Breakdown */}
-      <Card>
-        <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-          <Calculator size={20} /> Nebenkosten Aufschlüsselung
-        </h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {costs.ancillaryBreakdown.map(item => (
-            <div key={item.name} className="flex justify-between items-center p-2 bg-slate-800/50 rounded">
-              <span className="text-slate-300">{item.name}</span>
-              <span className="text-amber-400 font-medium">
-                {privacy ? '****' : `€${Math.round(item.cost).toLocaleString()}`}
-              </span>
-            </div>
-          ))}
-          <div className="md:col-span-2 flex justify-between items-center p-3 bg-slate-700 rounded font-semibold">
-            <span className="text-white">+ Reserve ({activeScenario.contingency}%)</span>
-            <span className="text-purple-400">
-              {privacy ? '****' : `€${Math.round(costs.contingencyAmount).toLocaleString()}`}
-            </span>
-          </div>
-        </div>
-      </Card>
-      
-      {/* Scenario Comparison */}
-      {scenarios.length > 1 && (
-        <Card>
-          <h3 className="text-lg font-semibold text-white mb-4">Szenario-Vergleich</h3>
-          <div className="h-80">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={comparisonData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-                <XAxis dataKey="name" stroke="#94a3b8" />
-                <YAxis stroke="#94a3b8" tickFormatter={(v) => `€${(v / 1000).toFixed(0)}k`} />
-                <RechartsTooltip
-                  contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #475569', borderRadius: '8px' }}
-                  formatter={(value: number) => `€${value.toLocaleString()}`}
-                />
-                <Legend />
-                <Bar dataKey="Grundstück" stackId="a" fill="#10b981" />
-                <Bar dataKey="Baukosten" stackId="a" fill="#3b82f6" />
-                <Bar dataKey="Nebenkosten" stackId="a" fill="#f59e0b" />
-                <Bar dataKey="Reserve" stackId="a" fill="#8b5cf6" />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-          
-          {/* Comparison Table */}
-          <div className="mt-4 overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-slate-400 border-b border-slate-700">
-                  <th className="text-left py-2 px-2">Szenario</th>
-                  <th className="text-right py-2 px-2">Grundstück</th>
-                  <th className="text-right py-2 px-2">Baukosten</th>
-                  <th className="text-right py-2 px-2">Nebenkosten</th>
-                  <th className="text-right py-2 px-2">Reserve</th>
-                  <th className="text-right py-2 px-2 font-semibold">Gesamt</th>
-                  <th className="text-right py-2 px-2">€/m²</th>
-                </tr>
-              </thead>
-              <tbody>
-                {scenarios.map(s => {
-                  const c = calculateCosts(s);
-                  return (
-                    <tr key={s.id} className={`border-b border-slate-800 ${s.id === activeScenarioId ? 'bg-slate-800/50' : ''}`}>
-                      <td className="py-2 px-2 text-white font-medium">{s.name}</td>
-                      <td className="py-2 px-2 text-right text-emerald-400">
-                        {privacy ? '****' : `€${c.landPrice.toLocaleString()}`}
-                      </td>
-                      <td className="py-2 px-2 text-right text-blue-400">
-                        {privacy ? '****' : `€${c.buildingCosts.toLocaleString()}`}
-                      </td>
-                      <td className="py-2 px-2 text-right text-amber-400">
-                        {privacy ? '****' : `€${Math.round(c.ancillaryCosts).toLocaleString()}`}
-                      </td>
-                      <td className="py-2 px-2 text-right text-purple-400">
-                        {privacy ? '****' : `€${Math.round(c.contingencyAmount).toLocaleString()}`}
-                      </td>
-                      <td className="py-2 px-2 text-right text-white font-semibold">
-                        {privacy ? '****' : `€${Math.round(c.totalCost).toLocaleString()}`}
-                      </td>
-                      <td className="py-2 px-2 text-right text-slate-400">
-                        {privacy ? '****' : `€${c.pricePerSqm}`}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </Card>
-      )}
-      
-      {/* Info Box */}
-      <Card className="bg-slate-800/50 border border-slate-700">
-        <h4 className="text-sm font-semibold text-white mb-2">Hinweise zur Kalkulation</h4>
-        <ul className="text-xs text-slate-400 space-y-1">
-          <li>• Die Preise sind Richtwerte für Deutschland (2024) und variieren stark nach Region</li>
-          <li>• Massivbau ist meist teurer als Fertighaus, bietet aber mehr Flexibilität</li>
-          <li>• Keller vs. Bodenplatte: ~€400-500/m² Unterschied, aber mehr Nutzfläche</li>
-          <li>• Architektenhonorar nach HOAI: 10-15% der Baukosten (alle Leistungsphasen)</li>
-          <li>• Reserve von 10-15% ist empfohlen für unvorhergesehene Kosten</li>
-        </ul>
-      </Card>
-    </div>
-  );
-};
-
-// ===================== PURCHASE ANALYZER =====================
-
-// Grunderwerbsteuer by German state
-const GRUNDERWERBSTEUER: Record<string, number> = {
-  'Baden-Württemberg': 5.0,
-  'Bayern': 3.5,
-  'Berlin': 6.0,
-  'Brandenburg': 6.5,
-  'Bremen': 5.0,
-  'Hamburg': 5.5,
-  'Hessen': 6.0,
-  'Mecklenburg-Vorpommern': 6.0,
-  'Niedersachsen': 5.0,
-  'Nordrhein-Westfalen': 6.5,
-  'Rheinland-Pfalz': 5.0,
-  'Saarland': 6.5,
-  'Sachsen': 5.5,
-  'Sachsen-Anhalt': 5.0,
-  'Schleswig-Holstein': 6.5,
-  'Thüringen': 5.0,
-};
-
-type PurchaseMode = 'kauf' | 'neubau';
-
-const PurchaseAnalyzer: React.FC<{
-  properties: RealEstateProperty[];
-  privacy: boolean;
-}> = ({ properties, privacy }) => {
-  // Mode: Kauf mit Grundstück vs. Neubau auf eigenem Grund
-  const [mode, setMode] = useState<PurchaseMode>('kauf');
-  
-  // Purchase Analysis State
-  const [purchasePrice, setPurchasePrice] = useState(500000); // Bei Neubau = Baukosten
-  const [grundstueckswert, setGrundstueckswert] = useState(150000); // Wert des bereits vorhandenen Grundstücks
-  const [eigenleistung, setEigenleistung] = useState(50000); // Eigenleistung (spart Kosten)
-  const [bundesland, setBundesland] = useState('Bayern');
-  const [maklerProvision, setMaklerProvision] = useState(3.57);
-  
-  // Marktwert-Berechnung (für Neubau)
-  const [anzahlWohnungen, setAnzahlWohnungen] = useState(6);
-  const [wertProWohnung, setWertProWohnung] = useState(500000);
-  const [useManualMarktwert, setUseManualMarktwert] = useState(false);
-  const [manualMarktwert, setManualMarktwert] = useState(3000000);
-  
-  // Mieteinnahmen
-  const [monthlyRent, setMonthlyRent] = useState(1500);
-  const [monthlyExpenses, setMonthlyExpenses] = useState(400);
-  const [eigenkapital, setEigenkapital] = useState(100000);
-  const [zinssatz, setZinssatz] = useState(3.5);
-  const [tilgung, setTilgung] = useState(2.0);
-  const [zinsbindung, setZinsbindung] = useState(15);
-  
-  // Berechneter Marktwert
-  const marktwert = useMemo(() => {
-    if (mode === 'kauf') return purchasePrice; // Bei Kauf = Kaufpreis
-    if (useManualMarktwert) return manualMarktwert;
-    return anzahlWohnungen * wertProWohnung;
-  }, [mode, useManualMarktwert, manualMarktwert, anzahlWohnungen, wertProWohnung, purchasePrice]);
-
-  // Kaufnebenkosten calculation - unterschiedlich je nach Modus
-  const kaufnebenkosten = useMemo(() => {
-    if (mode === 'neubau') {
-      // Bei Neubau auf eigenem Grund: keine Grunderwerbsteuer, kein Makler
-      // Nur Notar für Bauvertrag/Grundschuld und evtl. Baugenehmigung
-      const notar = purchasePrice * 0.01; // ~1% für Grundschuldbestellung
-      const grundbuch = purchasePrice * 0.003; // Geringer da nur Grundschuld
-      const baugenehmigung = 2000; // Pauschale
-      const total = notar + grundbuch + baugenehmigung;
-      return { grunderwerbsteuer: 0, notar, grundbuch, makler: 0, baugenehmigung, total };
-    } else {
-      // Normaler Kauf mit Grundstück
-      const grunderwerbsteuer = purchasePrice * (GRUNDERWERBSTEUER[bundesland] / 100);
-      const notar = purchasePrice * 0.015;
-      const grundbuch = purchasePrice * 0.005;
-      const makler = purchasePrice * (maklerProvision / 100);
-      const total = grunderwerbsteuer + notar + grundbuch + makler;
-      return { grunderwerbsteuer, notar, grundbuch, makler, baugenehmigung: 0, total };
-    }
-  }, [purchasePrice, bundesland, maklerProvision, mode]);
-
-  // Total investment & financing
-  const finanzierung = useMemo(() => {
-    // Bei Neubau: Baukosten abzüglich Eigenleistung + Nebenkosten
-    const effektiveBaukosten = mode === 'neubau' ? Math.max(0, purchasePrice - eigenleistung) : purchasePrice;
-    const finanzierungsbedarf = effektiveBaukosten + kaufnebenkosten.total;
-    
-    // Gesamtinvestition (was tatsächlich reingesteckt wird)
-    const gesamtinvestition = mode === 'neubau' 
-      ? effektiveBaukosten + kaufnebenkosten.total + grundstueckswert 
-      : purchasePrice + kaufnebenkosten.total;
-    
-    // Bei Neubau: Grundstück + Eigenleistung zählen als Eigenkapital
-    const effektivesEigenkapital = mode === 'neubau' 
-      ? eigenkapital + grundstueckswert + eigenleistung 
-      : eigenkapital;
-    
-    const fremdkapital = Math.max(0, finanzierungsbedarf - eigenkapital);
-    
-    // Eigenkapitalquote bezogen auf Marktwert (realistischer)
-    const eigenkapitalQuoteInvestition = (effektivesEigenkapital / gesamtinvestition) * 100;
-    const eigenkapitalQuoteMarktwert = (effektivesEigenkapital / marktwert) * 100;
-    
-    // Wertsteigerung durch Bau
-    const wertsteigerung = mode === 'neubau' ? marktwert - gesamtinvestition : 0;
-    const wertsteigerungProzent = mode === 'neubau' && gesamtinvestition > 0 
-      ? (wertsteigerung / gesamtinvestition) * 100 
-      : 0;
-    const monatlicheRate = fremdkapital * ((zinssatz + tilgung) / 100 / 12);
-    const jahresRate = monatlicheRate * 12;
-    
-    // Calculate different terms
-    const calculatePayoff = (principal: number, rate: number, repayment: number) => {
-      let remaining = principal;
-      let years = 0;
-      const annualPayment = principal * (rate + repayment) / 100;
-      while (remaining > 0 && years < 50) {
-        const interest = remaining * rate / 100;
-        const principal = annualPayment - interest;
-        remaining -= principal;
-        years++;
-      }
-      return years;
-    };
-    
-    const yearsToPayoff = calculatePayoff(fremdkapital, zinssatz, tilgung);
-    
-    // Remaining debt at end of fixed interest period
-    let remainingAtEnd = fremdkapital;
-    for (let i = 0; i < zinsbindung; i++) {
-      const interest = remainingAtEnd * zinssatz / 100;
-      const principal = jahresRate - interest;
-      remainingAtEnd -= principal;
-    }
-    
-    return {
-      gesamtinvestition,
-      finanzierungsbedarf,
-      effektiveBaukosten,
-      fremdkapital,
-      eigenkapitalQuoteInvestition,
-      eigenkapitalQuoteMarktwert,
-      effektivesEigenkapital,
-      wertsteigerung,
-      wertsteigerungProzent,
-      monatlicheRate,
-      jahresRate,
-      yearsToPayoff,
-      remainingAtEnd: Math.max(0, remainingAtEnd),
-    };
-  }, [purchasePrice, kaufnebenkosten.total, eigenkapital, zinssatz, tilgung, zinsbindung, mode, grundstueckswert, eigenleistung, marktwert]);
-
-  // Rendite calculations
-  const rendite = useMemo(() => {
-    const jahresmiete = monthlyRent * 12;
-    const jahresExpenses = monthlyExpenses * 12;
-    
-    // Mietrendite bezogen auf Marktwert (realistisch)
-    const bruttomietrenditeMarktwert = (jahresmiete / marktwert) * 100;
-    const nettomietrenditeMarktwert = ((jahresmiete - jahresExpenses) / marktwert) * 100;
-    
-    // Mietrendite bezogen auf Investment (was reingesteckt wurde)
-    const bruttomietrenditeInvestition = (jahresmiete / finanzierung.gesamtinvestition) * 100;
-    const nettomietrenditeInvestition = ((jahresmiete - jahresExpenses) / finanzierung.gesamtinvestition) * 100;
-    
-    // Eigenkapitalrendite (ROE) - Cashflow bezogen auf eingesetztes Eigenkapital
-    const nettoEinkommen = jahresmiete - jahresExpenses - finanzierung.jahresRate;
-    const eigenkapitalRendite = eigenkapital > 0 ? (nettoEinkommen / eigenkapital) * 100 : 0;
-    
-    // Gesamtrendite inkl. Wertsteigerung (für Jahr 1)
-    const gesamtrenditeJahr1 = eigenkapital > 0 
-      ? ((nettoEinkommen + finanzierung.wertsteigerung) / eigenkapital) * 100 
-      : 0;
-    
-    // Cashflow
-    const monthlyCashflow = monthlyRent - monthlyExpenses - finanzierung.monatlicheRate;
-    
-    // Break-even rent (minimal rent to cover all costs)
-    const breakEvenRent = finanzierung.monatlicheRate + monthlyExpenses;
-    
-    // Comparison with ETF (7% p.a.)
-    const etfReturn = eigenkapital * 0.07;
-    const realEstateReturn = nettoEinkommen;
-    
-    // Mietmultiplikator (Kaufpreis/Jahresmiete)
-    const mietmultiplikator = jahresmiete > 0 ? marktwert / jahresmiete : 0;
-    
-    return {
-      bruttomietrenditeMarktwert,
-      nettomietrenditeMarktwert,
-      bruttomietrenditeInvestition,
-      nettomietrenditeInvestition,
-      eigenkapitalRendite,
-      gesamtrenditeJahr1,
-      monthlyCashflow,
-      breakEvenRent,
-      etfReturn,
-      realEstateReturn,
-      mietmultiplikator,
-    };
-  }, [monthlyRent, monthlyExpenses, marktwert, eigenkapital, finanzierung]);
-
-  // Financing term comparison
-  const finanzierungsVergleich = useMemo(() => {
-    const terms = [10, 15, 20, 25, 30];
-    return terms.map(years => {
-      const requiredTilgung = 100 / years;
-      const annualRate = finanzierung.fremdkapital * (zinssatz + requiredTilgung) / 100;
-      const monthlyRate = annualRate / 12;
-      const totalInterest = (annualRate * years) - finanzierung.fremdkapital;
-      
-      return {
-        years,
-        tilgung: requiredTilgung,
-        monthlyRate,
-        totalInterest,
-        totalCost: finanzierung.fremdkapital + totalInterest,
-      };
-    });
-  }, [finanzierung.fremdkapital, zinssatz]);
-
-  return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-4">
-          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center">
-            <ShoppingCart size={24} className="text-white" />
-          </div>
-          <div>
-            <h3 className="text-xl font-bold text-white">Kaufanalyse</h3>
-            <p className="text-slate-400 text-sm">Kaufnebenkosten, Rendite & Finanzierung</p>
-          </div>
-        </div>
-        {/* Mode Toggle */}
-        <div className="flex bg-slate-800 p-1 rounded-lg border border-slate-700">
-          <button
-            onClick={() => setMode('kauf')}
-            className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-              mode === 'kauf' ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            Kauf mit Grundstück
-          </button>
-          <button
-            onClick={() => setMode('neubau')}
-            className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-              mode === 'neubau' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            Neubau auf eigenem Grund
-          </button>
-        </div>
-      </div>
-
-      {/* Info Box for Neubau Mode */}
-      {mode === 'neubau' && (
-        <div className="flex items-center gap-3 p-4 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-200 text-sm">
-          <HardHat size={20} className="flex-shrink-0" />
-          <p>
-            <strong>Neubau auf eigenem Grundstück:</strong> Da Sie das Grundstück bereits besitzen, entfallen Grunderwerbsteuer und Maklergebühren. 
-            Nur Notar für Grundschuldbestellung und Baugenehmigung werden berechnet.
-          </p>
-        </div>
-      )}
-
-      {/* Input Section */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Kaufpreis/Baukosten & Nebenkosten */}
-        <Card>
-          <h4 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-            <Building2 size={18} className="text-emerald-400" /> 
-            {mode === 'neubau' ? 'Baukosten & Grundstück' : 'Kaufpreis & Nebenkosten'}
-          </h4>
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm text-slate-400 mb-1">
-                {mode === 'neubau' ? 'Baukosten (€)' : 'Kaufpreis (€)'}
-              </label>
-              <Input
-                type="number"
-                value={purchasePrice}
-                onChange={(e) => setPurchasePrice(Number(e.target.value))}
-              />
-              {mode === 'neubau' && (
-                <p className="text-xs text-slate-500 mt-1">Reine Baukosten ohne Grundstück</p>
-              )}
-            </div>
-            {mode === 'neubau' && (
-              <>
-                <div>
-                  <label className="block text-sm text-slate-400 mb-1">Eigenleistung (€)</label>
-                  <Input
-                    type="number"
-                    value={eigenleistung}
-                    onChange={(e) => setEigenleistung(Number(e.target.value))}
-                  />
-                  <p className="text-xs text-slate-500 mt-1">Selbst ausgeführte Arbeiten (spart Kosten)</p>
-                </div>
-                <div>
-                  <label className="block text-sm text-slate-400 mb-1">Grundstückswert (€)</label>
-                  <Input
-                    type="number"
-                    value={grundstueckswert}
-                    onChange={(e) => setGrundstueckswert(Number(e.target.value))}
-                  />
-                  <p className="text-xs text-slate-500 mt-1">Aktueller Verkehrswert des vorhandenen Grundstücks</p>
-                </div>
-              </>
-            )}
-            {mode === 'kauf' && (
-              <>
-                <div>
-                  <label className="block text-sm text-slate-400 mb-1">Bundesland</label>
-                  <Select
-                    value={bundesland}
-                    onChange={(e) => setBundesland(e.target.value)}
-                  >
-                    {Object.keys(GRUNDERWERBSTEUER).map(state => (
-                      <option key={state} value={state}>{state} ({GRUNDERWERBSTEUER[state]}%)</option>
-                    ))}
-                  </Select>
-                </div>
-                <div>
-                  <label className="block text-sm text-slate-400 mb-1">Maklerprovision (%)</label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    value={maklerProvision}
-                    onChange={(e) => setMaklerProvision(Number(e.target.value))}
-                  />
-                </div>
-              </>
-            )}
-          </div>
-        </Card>
-
-        {/* Mieteinnahmen */}
-        <Card>
-          <h4 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-            <Wallet size={18} className="text-blue-400" /> Mieteinnahmen
-          </h4>
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm text-slate-400 mb-1">Kaltmiete / Monat (€)</label>
-              <Input
-                type="number"
-                value={monthlyRent}
-                onChange={(e) => setMonthlyRent(Number(e.target.value))}
-              />
-            </div>
-            <div>
-              <label className="block text-sm text-slate-400 mb-1">Nicht-umlagefähige Kosten / Monat (€)</label>
-              <Input
-                type="number"
-                value={monthlyExpenses}
-                onChange={(e) => setMonthlyExpenses(Number(e.target.value))}
-              />
-              <p className="text-xs text-slate-500 mt-1">Hausgeld, Grundsteuer, Versicherung, Instandhaltung</p>
-            </div>
-          </div>
-        </Card>
-
-        {/* Finanzierung */}
-        <Card>
-          <h4 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-            <PiggyBank size={18} className="text-amber-400" /> Finanzierung
-          </h4>
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm text-slate-400 mb-1">Eigenkapital (€)</label>
-              <Input
-                type="number"
-                value={eigenkapital}
-                onChange={(e) => setEigenkapital(Number(e.target.value))}
-              />
-            </div>
-            <div>
-              <label className="block text-sm text-slate-400 mb-1">Zinssatz (%)</label>
-              <Input
-                type="number"
-                step="0.1"
-                value={zinssatz}
-                onChange={(e) => setZinssatz(Number(e.target.value))}
-              />
-            </div>
-            <div>
-              <label className="block text-sm text-slate-400 mb-1">Anfangstilgung (%)</label>
-              <Input
-                type="number"
-                step="0.1"
-                value={tilgung}
-                onChange={(e) => setTilgung(Number(e.target.value))}
-              />
-            </div>
-            <div>
-              <label className="block text-sm text-slate-400 mb-1">Zinsbindung (Jahre)</label>
-              <Input
-                type="number"
-                value={zinsbindung}
-                onChange={(e) => setZinsbindung(Number(e.target.value))}
-              />
-            </div>
-          </div>
-        </Card>
-      </div>
-
-      {/* Marktwert-Berechnung (nur bei Neubau) */}
-      {mode === 'neubau' && (
-        <Card className="bg-gradient-to-r from-emerald-900/20 to-teal-900/20 border-emerald-500/30">
-          <h4 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-            <TrendingUp size={18} className="text-emerald-400" /> Marktwert-Berechnung
-          </h4>
-          <p className="text-slate-400 text-sm mb-4">
-            Der Marktwert ist oft deutlich höher als die Baukosten - besonders bei Mehrfamilienhäusern in guter Lage.
-          </p>
-          
-          <div className="flex items-center gap-4 mb-4">
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="radio"
-                checked={!useManualMarktwert}
-                onChange={() => setUseManualMarktwert(false)}
-                className="w-4 h-4 text-emerald-500 border-slate-600 bg-slate-800 focus:ring-emerald-500"
-              />
-              <span className="text-slate-300">Nach Wohneinheiten berechnen</span>
-            </label>
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="radio"
-                checked={useManualMarktwert}
-                onChange={() => setUseManualMarktwert(true)}
-                className="w-4 h-4 text-emerald-500 border-slate-600 bg-slate-800 focus:ring-emerald-500"
-              />
-              <span className="text-slate-300">Manuell eingeben</span>
-            </label>
-          </div>
-
-          {useManualMarktwert ? (
-            <div>
-              <label className="block text-sm text-slate-400 mb-1">Geschätzter Marktwert (€)</label>
-              <Input
-                type="number"
-                value={manualMarktwert}
-                onChange={(e) => setManualMarktwert(Number(e.target.value))}
-              />
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm text-slate-400 mb-1">Anzahl Wohnungen</label>
-                <Input
-                  type="number"
-                  value={anzahlWohnungen}
-                  onChange={(e) => setAnzahlWohnungen(Number(e.target.value))}
-                />
-              </div>
-              <div>
-                <label className="block text-sm text-slate-400 mb-1">Wert pro Wohnung (€)</label>
-                <Input
-                  type="number"
-                  value={wertProWohnung}
-                  onChange={(e) => setWertProWohnung(Number(e.target.value))}
-                />
-                <p className="text-xs text-slate-500 mt-1">Basierend auf Lage (z.B. Rosenheim, gute Nachbarschaft)</p>
-              </div>
-            </div>
-          )}
-
-          <div className="mt-4 p-4 bg-slate-800/50 rounded-lg">
-            <div className="flex justify-between items-center">
-              <span className="text-slate-400">Geschätzter Marktwert</span>
-              <span className="text-3xl font-bold text-emerald-400">
-                <Money value={marktwert} privacy={privacy} fractionDigits={0} />
-              </span>
-            </div>
-            {finanzierung.wertsteigerung > 0 && (
-              <div className="mt-3 pt-3 border-t border-slate-700 flex justify-between items-center">
-                <span className="text-slate-400">Wertsteigerung durch Bau</span>
-                <div className="text-right">
-                  <span className="text-xl font-bold text-emerald-400">
-                    +<Money value={finanzierung.wertsteigerung} privacy={privacy} fractionDigits={0} />
-                  </span>
-                  <span className="text-emerald-400 text-sm ml-2">
-                    (+{finanzierung.wertsteigerungProzent.toFixed(0)}%)
-                  </span>
-                </div>
-              </div>
-            )}
-          </div>
-        </Card>
-      )}
-
-      {/* Results Section */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Kaufnebenkosten Breakdown */}
-        <Card>
-          <h4 className="text-lg font-semibold text-white mb-4">
-            {mode === 'neubau' ? 'Kosten & Nebenkosten' : 'Kaufnebenkosten'}
-          </h4>
-          <div className="space-y-3">
-            {mode === 'neubau' ? (
-              <>
-                <div className="flex justify-between">
-                  <span className="text-slate-400">Grundstück (vorhanden)</span>
-                  <span className="text-emerald-400 font-medium"><Money value={grundstueckswert} privacy={privacy} /></span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-400">Baukosten (brutto)</span>
-                  <span className="text-white font-medium"><Money value={purchasePrice} privacy={privacy} /></span>
-                </div>
-                {eigenleistung > 0 && (
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">- Eigenleistung (spart)</span>
-                    <span className="text-emerald-400 font-medium">-<Money value={eigenleistung} privacy={privacy} /></span>
-                  </div>
-                )}
-                <div className="flex justify-between">
-                  <span className="text-slate-400">= Effektive Baukosten</span>
-                  <span className="text-white font-medium"><Money value={finanzierung.effektiveBaukosten} privacy={privacy} /></span>
-                </div>
-                <div className="flex justify-between mt-2">
-                  <span className="text-slate-400">Notar (Grundschuld ~1%)</span>
-                  <span className="text-red-400"><Money value={kaufnebenkosten.notar} privacy={privacy} /></span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-400">Grundbuch (Grundschuld)</span>
-                  <span className="text-red-400"><Money value={kaufnebenkosten.grundbuch} privacy={privacy} /></span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-400">Baugenehmigung</span>
-                  <span className="text-red-400"><Money value={kaufnebenkosten.baugenehmigung} privacy={privacy} /></span>
-                </div>
-                <div className="flex justify-between text-slate-500 line-through">
-                  <span>Grunderwerbsteuer</span>
-                  <span>€0 (entfällt)</span>
-                </div>
-                <div className="flex justify-between text-slate-500 line-through">
-                  <span>Makler</span>
-                  <span>€0 (entfällt)</span>
-                </div>
-              </>
-            ) : (
-              <>
-                <div className="flex justify-between">
-                  <span className="text-slate-400">Kaufpreis</span>
-                  <span className="text-white font-medium"><Money value={purchasePrice} privacy={privacy} /></span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-400">Grunderwerbsteuer ({GRUNDERWERBSTEUER[bundesland]}%)</span>
-                  <span className="text-red-400"><Money value={kaufnebenkosten.grunderwerbsteuer} privacy={privacy} /></span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-400">Notar (~1.5%)</span>
-                  <span className="text-red-400"><Money value={kaufnebenkosten.notar} privacy={privacy} /></span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-400">Grundbuch (~0.5%)</span>
-                  <span className="text-red-400"><Money value={kaufnebenkosten.grundbuch} privacy={privacy} /></span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-400">Makler ({maklerProvision}%)</span>
-                  <span className="text-red-400"><Money value={kaufnebenkosten.makler} privacy={privacy} /></span>
-                </div>
-              </>
-            )}
-            <div className="border-t border-slate-700 pt-3 flex justify-between">
-              <span className="text-white font-semibold">Nebenkosten Gesamt</span>
-              <span className="text-red-400 font-bold"><Money value={kaufnebenkosten.total} privacy={privacy} /></span>
-            </div>
-            {mode === 'neubau' && (
-              <>
-                <div className="flex justify-between">
-                  <span className="text-slate-400">Finanzierungsbedarf</span>
-                  <span className="text-amber-400 font-medium"><Money value={finanzierung.finanzierungsbedarf} privacy={privacy} /></span>
-                </div>
-                <div className="flex justify-between bg-slate-800 p-3 rounded-lg">
-                  <span className="text-white font-semibold">Gesamtinvestition</span>
-                  <span className="text-white font-bold text-lg"><Money value={finanzierung.gesamtinvestition} privacy={privacy} /></span>
-                </div>
-                <div className="flex justify-between bg-emerald-900/30 p-3 rounded-lg border border-emerald-500/30">
-                  <span className="text-emerald-300 font-semibold">Marktwert nach Fertigstellung</span>
-                  <span className="text-emerald-400 font-bold text-lg"><Money value={marktwert} privacy={privacy} /></span>
-                </div>
-              </>
-            )}
-            {mode === 'kauf' && (
-              <div className="flex justify-between bg-slate-800 p-3 rounded-lg">
-                <span className="text-white font-semibold">Gesamtinvestition</span>
-                <span className="text-white font-bold text-lg"><Money value={finanzierung.gesamtinvestition} privacy={privacy} /></span>
-              </div>
-            )}
-          </div>
-        </Card>
-
-        {/* Finanzierung Details */}
-        <Card>
-          <h4 className="text-lg font-semibold text-white mb-4">Finanzierung</h4>
-          <div className="space-y-3">
-            {mode === 'neubau' ? (
-              <>
-                <div className="flex justify-between">
-                  <span className="text-slate-400">Grundstück (vorhanden)</span>
-                  <span className="text-emerald-400 font-medium"><Money value={grundstueckswert} privacy={privacy} /></span>
-                </div>
-                {eigenleistung > 0 && (
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">+ Eigenleistung</span>
-                    <span className="text-emerald-400 font-medium"><Money value={eigenleistung} privacy={privacy} /></span>
-                  </div>
-                )}
-                <div className="flex justify-between">
-                  <span className="text-slate-400">+ Bares Eigenkapital</span>
-                  <span className="text-emerald-400 font-medium"><Money value={eigenkapital} privacy={privacy} /></span>
-                </div>
-                <div className="flex justify-between border-t border-slate-700 pt-2">
-                  <span className="text-white font-semibold">= Gesamtes Eigenkapital</span>
-                  <span className="text-emerald-400 font-bold"><Money value={finanzierung.effektivesEigenkapital} privacy={privacy} /></span>
-                </div>
-              </>
-            ) : (
-              <div className="flex justify-between">
-                <span className="text-slate-400">Eigenkapital</span>
-                <span className="text-emerald-400 font-medium"><Money value={eigenkapital} privacy={privacy} /></span>
-              </div>
-            )}
-            <div className="flex justify-between">
-              <span className="text-slate-400">Fremdkapital (Kredit)</span>
-              <span className="text-amber-400 font-medium"><Money value={finanzierung.fremdkapital} privacy={privacy} /></span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate-400">EK-Quote (Investition)</span>
-              <span className={`font-medium ${finanzierung.eigenkapitalQuoteInvestition >= 20 ? 'text-emerald-400' : 'text-red-400'}`}>
-                {finanzierung.eigenkapitalQuoteInvestition.toFixed(1)}%
-              </span>
-            </div>
-            {mode === 'neubau' && (
-              <div className="flex justify-between">
-                <span className="text-slate-400">EK-Quote (Marktwert)</span>
-                <span className="text-emerald-400 font-medium">
-                  {finanzierung.eigenkapitalQuoteMarktwert.toFixed(1)}%
-                </span>
-              </div>
-            )}
-            <div className="border-t border-slate-700 pt-3 flex justify-between">
-              <span className="text-white font-semibold">Monatliche Rate</span>
-              <span className="text-white font-bold"><Money value={finanzierung.monatlicheRate} privacy={privacy} /></span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate-400">Laufzeit bis Tilgung</span>
-              <span className="text-white font-medium">~{finanzierung.yearsToPayoff} Jahre</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate-400">Restschuld nach {zinsbindung}J</span>
-              <span className="text-amber-400 font-medium"><Money value={finanzierung.remainingAtEnd} privacy={privacy} /></span>
-            </div>
-          </div>
-        </Card>
-      </div>
-
-      {/* Rendite Kennzahlen */}
-      <Card>
-        <h4 className="text-lg font-semibold text-white mb-4">Rendite-Kennzahlen</h4>
-        
-        {/* Wertsteigerung Highlight (nur bei Neubau) */}
-        {mode === 'neubau' && finanzierung.wertsteigerung > 0 && (
-          <div className="mb-4 p-4 bg-gradient-to-r from-emerald-900/30 to-teal-900/30 rounded-lg border border-emerald-500/30">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-emerald-300 font-semibold">Wertsteigerung durch Bau</p>
-                <p className="text-slate-400 text-sm">Marktwert vs. Investition</p>
-              </div>
-              <div className="text-right">
-                <p className="text-3xl font-bold text-emerald-400">
-                  +<Money value={finanzierung.wertsteigerung} privacy={privacy} fractionDigits={0} />
-                </p>
-                <p className="text-emerald-400 text-sm">+{finanzierung.wertsteigerungProzent.toFixed(0)}% Gewinn</p>
-              </div>
-            </div>
-          </div>
-        )}
-        
-        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
-          <div className="bg-slate-800 p-4 rounded-lg text-center">
-            <p className="text-slate-400 text-xs uppercase mb-1">
-              {mode === 'neubau' ? 'Bruttorendite (Invest.)' : 'Bruttomietrendite'}
-            </p>
-            <p className={`text-2xl font-bold ${rendite.bruttomietrenditeInvestition >= 5 ? 'text-emerald-400' : 'text-amber-400'}`}>
-              {rendite.bruttomietrenditeInvestition.toFixed(2)}%
-            </p>
-            {mode === 'neubau' && (
-              <p className="text-xs text-slate-500 mt-1">
-                Marktwert: {rendite.bruttomietrenditeMarktwert.toFixed(2)}%
-              </p>
-            )}
-          </div>
-          <div className="bg-slate-800 p-4 rounded-lg text-center">
-            <p className="text-slate-400 text-xs uppercase mb-1">
-              {mode === 'neubau' ? 'Nettorendite (Invest.)' : 'Nettomietrendite'}
-            </p>
-            <p className={`text-2xl font-bold ${rendite.nettomietrenditeInvestition >= 3 ? 'text-emerald-400' : 'text-amber-400'}`}>
-              {rendite.nettomietrenditeInvestition.toFixed(2)}%
-            </p>
-            {mode === 'neubau' && (
-              <p className="text-xs text-slate-500 mt-1">
-                Marktwert: {rendite.nettomietrenditeMarktwert.toFixed(2)}%
-              </p>
-            )}
-          </div>
-          <div className="bg-slate-800 p-4 rounded-lg text-center">
-            <p className="text-slate-400 text-xs uppercase mb-1">Eigenkapitalrendite</p>
-            <p className={`text-2xl font-bold ${rendite.eigenkapitalRendite >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-              {rendite.eigenkapitalRendite.toFixed(2)}%
-            </p>
-            <p className="text-xs text-slate-500 mt-1">Cashflow / EK</p>
-          </div>
-          {mode === 'neubau' && (
-            <div className="bg-gradient-to-br from-emerald-800/30 to-teal-800/30 p-4 rounded-lg text-center border border-emerald-500/30">
-              <p className="text-emerald-300 text-xs uppercase mb-1">Gesamtrendite Jahr 1</p>
-              <p className={`text-2xl font-bold text-emerald-400`}>
-                {rendite.gesamtrenditeJahr1.toFixed(0)}%
-              </p>
-              <p className="text-xs text-slate-400 mt-1">inkl. Wertsteigerung</p>
-            </div>
-          )}
-          <div className="bg-slate-800 p-4 rounded-lg text-center">
-            <p className="text-slate-400 text-xs uppercase mb-1">Monatl. Cashflow</p>
-            <p className={`text-2xl font-bold ${rendite.monthlyCashflow >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-              <Money value={rendite.monthlyCashflow} privacy={privacy} sign />
-            </p>
-          </div>
-          <div className="bg-slate-800 p-4 rounded-lg text-center">
-            <p className="text-slate-400 text-xs uppercase mb-1">Mietmultiplikator</p>
-            <p className={`text-xl font-bold ${rendite.mietmultiplikator <= 20 ? 'text-emerald-400' : rendite.mietmultiplikator <= 25 ? 'text-amber-400' : 'text-red-400'}`}>
-              {rendite.mietmultiplikator.toFixed(1)}x
-            </p>
-            <p className="text-xs text-slate-500 mt-1">{"<"}20 = gut</p>
-          </div>
-          <div className="bg-slate-800 p-4 rounded-lg text-center">
-            <p className="text-slate-400 text-xs uppercase mb-1">Break-Even Miete</p>
-            <p className="text-xl font-bold text-white">
-              <Money value={rendite.breakEvenRent} privacy={privacy} />
-            </p>
-          </div>
-        </div>
-      </Card>
-
-      {/* Laufzeitenvergleich */}
-      <Card>
-        <h4 className="text-lg font-semibold text-white mb-4">Laufzeitenvergleich</h4>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left">
-            <thead>
-              <tr className="text-slate-400 text-sm border-b border-slate-700">
-                <th className="py-3 px-2">Laufzeit</th>
-                <th className="py-3 px-2 text-right">Tilgung</th>
-                <th className="py-3 px-2 text-right">Monatl. Rate</th>
-                <th className="py-3 px-2 text-right">Gesamtzinsen</th>
-                <th className="py-3 px-2 text-right">Gesamtkosten</th>
-              </tr>
-            </thead>
-            <tbody>
-              {finanzierungsVergleich.map(f => (
-                <tr key={f.years} className={`border-b border-slate-800 ${f.years === Math.round(100/tilgung) ? 'bg-emerald-500/10' : ''}`}>
-                  <td className="py-3 px-2 text-white font-medium">{f.years} Jahre</td>
-                  <td className="py-3 px-2 text-right text-slate-300">{f.tilgung.toFixed(1)}%</td>
-                  <td className="py-3 px-2 text-right text-white"><Money value={f.monthlyRate} privacy={privacy} /></td>
-                  <td className="py-3 px-2 text-right text-red-400"><Money value={f.totalInterest} privacy={privacy} /></td>
-                  <td className="py-3 px-2 text-right text-white font-semibold"><Money value={f.totalCost} privacy={privacy} /></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </Card>
-    </div>
-  );
-};
-
-// ===================== RISK ANALYZER =====================
-
-const RiskAnalyzer: React.FC<{
-  properties: RealEstateProperty[];
-  privacy: boolean;
-}> = ({ properties, privacy }) => {
-  // Stress test parameters
-  const [interestShock, setInterestShock] = useState(2); // +2% interest
-  const [vacancyMonths, setVacancyMonths] = useState(2); // 2 months/year
-  const [valueDropPercent, setValueDropPercent] = useState(20); // -20% value
-  const [showWorstCase, setShowWorstCase] = useState(false);
-
-  // Current portfolio totals
-  const currentTotals = useMemo(() => {
-    return properties.reduce((acc, p) => {
-      acc.totalValue += p.currentValue;
-      acc.totalDebt += p.loanAmount;
-      acc.monthlyPayment += p.monthlyPayment;
-      acc.monthlyRent += p.isRented ? p.monthlyRent : 0;
-      acc.monthlyExpenses += p.monthlyTaxes + p.monthlyInsurance + p.monthlyMaintenance + p.monthlyHOA;
-      return acc;
-    }, { totalValue: 0, totalDebt: 0, monthlyPayment: 0, monthlyRent: 0, monthlyExpenses: 0 });
-  }, [properties]);
-
-  // Stress test calculations
-  const stressTests = useMemo(() => {
-    // Interest rate shock
-    const interestStress = properties.map(p => {
-      const newRate = p.interestRate + interestShock;
-      const newMonthlyInterest = p.loanAmount * (newRate / 100 / 12);
-      const newPayment = newMonthlyInterest + p.monthlyPrincipal;
-      const paymentIncrease = newPayment - p.monthlyPayment;
-      return { name: p.name, oldPayment: p.monthlyPayment, newPayment, increase: paymentIncrease };
-    });
-    const totalInterestIncrease = interestStress.reduce((sum, s) => sum + s.increase, 0);
-
-    // Vacancy stress
-    const vacancyFactor = (12 - vacancyMonths) / 12;
-    const adjustedRent = currentTotals.monthlyRent * vacancyFactor;
-    const rentLoss = currentTotals.monthlyRent - adjustedRent;
-
-    // Value drop
-    const newValue = currentTotals.totalValue * (1 - valueDropPercent / 100);
-    const newEquity = newValue - currentTotals.totalDebt;
-    const newLTV = (currentTotals.totalDebt / newValue) * 100;
-
-    // Current cashflow
-    const currentCashflow = currentTotals.monthlyRent - currentTotals.monthlyExpenses - currentTotals.monthlyPayment;
-
-    // Stressed cashflow (worst case)
-    const worstCaseCashflow = adjustedRent - currentTotals.monthlyExpenses - (currentTotals.monthlyPayment + totalInterestIncrease);
-
-    return {
-      interestStress,
-      totalInterestIncrease,
-      adjustedRent,
-      rentLoss,
-      newValue,
-      newEquity,
-      newLTV,
-      currentCashflow,
-      worstCaseCashflow,
-    };
-  }, [properties, currentTotals, interestShock, vacancyMonths, valueDropPercent]);
-
-  // Risk score calculation
-  const riskScore = useMemo(() => {
-    let score = 0;
-    const currentLTV = (currentTotals.totalDebt / currentTotals.totalValue) * 100;
-    
-    // LTV risk
-    if (currentLTV > 90) score += 30;
-    else if (currentLTV > 80) score += 20;
-    else if (currentLTV > 60) score += 10;
-    
-    // Cashflow risk
-    const cashflowRatio = stressTests.currentCashflow / currentTotals.monthlyPayment;
-    if (cashflowRatio < 0) score += 30;
-    else if (cashflowRatio < 0.2) score += 20;
-    else if (cashflowRatio < 0.5) score += 10;
-    
-    // Interest rate sensitivity
-    const interestImpact = stressTests.totalInterestIncrease / currentTotals.monthlyPayment;
-    if (interestImpact > 0.5) score += 20;
-    else if (interestImpact > 0.3) score += 15;
-    else if (interestImpact > 0.2) score += 10;
-    
-    // Concentration risk
-    if (properties.length === 1) score += 10;
-    
-    return Math.min(100, score);
-  }, [currentTotals, stressTests, properties.length]);
-
-  const getRiskLevel = (score: number) => {
-    if (score >= 60) return { text: 'Hoch', color: 'text-red-400', bg: 'bg-red-500' };
-    if (score >= 30) return { text: 'Mittel', color: 'text-amber-400', bg: 'bg-amber-500' };
-    return { text: 'Niedrig', color: 'text-emerald-400', bg: 'bg-emerald-500' };
-  };
-
-  const risk = getRiskLevel(riskScore);
-
-  // Chart data for stress scenarios
-  const scenarioData = [
-    { name: 'Aktuell', cashflow: stressTests.currentCashflow, equity: currentTotals.totalValue - currentTotals.totalDebt },
-    { name: `+${interestShock}% Zins`, cashflow: stressTests.currentCashflow - stressTests.totalInterestIncrease, equity: currentTotals.totalValue - currentTotals.totalDebt },
-    { name: `${vacancyMonths}Mo Leerstand`, cashflow: stressTests.currentCashflow - stressTests.rentLoss, equity: currentTotals.totalValue - currentTotals.totalDebt },
-    { name: `-${valueDropPercent}% Wert`, cashflow: stressTests.currentCashflow, equity: stressTests.newEquity },
-    { name: 'Worst Case', cashflow: stressTests.worstCaseCashflow, equity: stressTests.newEquity },
-  ];
-
-  if (properties.length === 0) {
-    return (
-      <Card className="text-center py-12">
-        <AlertTriangle size={48} className="mx-auto text-slate-600 mb-4" />
-        <h3 className="text-xl font-bold text-white mb-2">Keine Immobilien</h3>
-        <p className="text-slate-400">Füge Immobilien hinzu, um Risiken zu analysieren.</p>
-      </Card>
-    );
-  }
-
-  return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center gap-4 mb-6">
-        <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-red-500 to-orange-600 flex items-center justify-center">
-          <AlertTriangle size={24} className="text-white" />
-        </div>
-        <div>
-          <h3 className="text-xl font-bold text-white">Risiko-Analyse</h3>
-          <p className="text-slate-400 text-sm">Stress-Tests & Portfolio-Bewertung</p>
-        </div>
-      </div>
-
-      {/* Risk Score */}
-      <Card className="bg-gradient-to-r from-slate-900 to-slate-800">
-        <div className="flex items-center justify-between">
-          <div>
-            <h4 className="text-lg font-semibold text-white mb-2">Risiko-Score</h4>
-            <p className="text-slate-400 text-sm">Basierend auf LTV, Cashflow, Zinssensitivität</p>
-          </div>
-          <div className="text-right">
-            <div className={`text-5xl font-bold ${risk.color}`}>{riskScore}</div>
-            <Badge className={`${risk.bg} text-white`}>{risk.text}</Badge>
-          </div>
-        </div>
-        <div className="mt-4 h-3 bg-slate-700 rounded-full overflow-hidden">
-          <div className={`h-full ${risk.bg} transition-all duration-500`} style={{ width: `${riskScore}%` }} />
-        </div>
-      </Card>
-
-      {/* Stress Test Controls */}
-      <Card>
-        <h4 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-          <SlidersHorizontal size={18} className="text-amber-400" /> Stress-Test Parameter
-        </h4>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div>
-            <label className="block text-sm text-slate-400 mb-2">
-              Zinsanstieg bei Anschlussfinanzierung: <span className="text-amber-400 font-medium">+{interestShock}%</span>
-            </label>
-            <input
-              type="range"
-              min="0"
-              max="5"
-              step="0.5"
-              value={interestShock}
-              onChange={(e) => setInterestShock(Number(e.target.value))}
-              className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-amber-500"
-            />
-          </div>
-          <div>
-            <label className="block text-sm text-slate-400 mb-2">
-              Leerstand pro Jahr: <span className="text-red-400 font-medium">{vacancyMonths} Monate</span>
-            </label>
-            <input
-              type="range"
-              min="0"
-              max="6"
-              step="1"
-              value={vacancyMonths}
-              onChange={(e) => setVacancyMonths(Number(e.target.value))}
-              className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-red-500"
-            />
-          </div>
-          <div>
-            <label className="block text-sm text-slate-400 mb-2">
-              Wertverlust: <span className="text-purple-400 font-medium">-{valueDropPercent}%</span>
-            </label>
-            <input
-              type="range"
-              min="0"
-              max="40"
-              step="5"
-              value={valueDropPercent}
-              onChange={(e) => setValueDropPercent(Number(e.target.value))}
-              className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-purple-500"
-            />
-          </div>
-        </div>
-      </Card>
-
-      {/* Stress Test Results */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card className="text-center">
-          <Shield size={24} className="mx-auto mb-2 text-blue-400" />
-          <p className="text-slate-400 text-xs uppercase mb-1">Aktueller LTV</p>
-          <p className={`text-2xl font-bold ${(currentTotals.totalDebt / currentTotals.totalValue * 100) > 80 ? 'text-red-400' : 'text-white'}`}>
-            {((currentTotals.totalDebt / currentTotals.totalValue) * 100).toFixed(1)}%
-          </p>
-        </Card>
-        <Card className="text-center">
-          <TrendingDown size={24} className="mx-auto mb-2 text-purple-400" />
-          <p className="text-slate-400 text-xs uppercase mb-1">LTV bei -{valueDropPercent}% Wert</p>
-          <p className={`text-2xl font-bold ${stressTests.newLTV > 100 ? 'text-red-400' : stressTests.newLTV > 80 ? 'text-amber-400' : 'text-white'}`}>
-            {stressTests.newLTV.toFixed(1)}%
-          </p>
-        </Card>
-        <Card className="text-center">
-          <Percent size={24} className="mx-auto mb-2 text-amber-400" />
-          <p className="text-slate-400 text-xs uppercase mb-1">Rate bei +{interestShock}% Zins</p>
-          <p className="text-2xl font-bold text-amber-400">
-            +<Money value={stressTests.totalInterestIncrease} privacy={privacy} />
-          </p>
-        </Card>
-        <Card className="text-center">
-          <Wallet size={24} className="mx-auto mb-2 text-red-400" />
-          <p className="text-slate-400 text-xs uppercase mb-1">Worst-Case Cashflow</p>
-          <p className={`text-2xl font-bold ${stressTests.worstCaseCashflow >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-            <Money value={stressTests.worstCaseCashflow} privacy={privacy} sign />
-          </p>
-        </Card>
-      </div>
-
-      {/* Scenario Chart */}
-      <Card>
-        <h4 className="text-lg font-semibold text-white mb-4">Szenario-Vergleich</h4>
-        <div className="h-80">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={scenarioData} margin={{ top: 20, right: 20, left: 20, bottom: 20 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
-              <XAxis dataKey="name" stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} />
-              <YAxis stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(val) => privacy ? '' : `€${val/1000}k`} />
-              <RechartsTooltip 
-                contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px' }}
-                formatter={(val: number, name: string) => [privacy ? '****' : `€${val.toLocaleString()}`, name === 'cashflow' ? 'Monatl. Cashflow' : 'Eigenkapital']}
-              />
-              <Legend />
-              <Bar name="Monatl. Cashflow" dataKey="cashflow" fill="#6366f1" radius={[4, 4, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-      </Card>
-
-      {/* Interest Stress by Property */}
-      <Card>
-        <h4 className="text-lg font-semibold text-white mb-4">Zinsrisiko pro Immobilie (+{interestShock}%)</h4>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left">
-            <thead>
-              <tr className="text-slate-400 text-sm border-b border-slate-700">
-                <th className="py-3 px-2">Immobilie</th>
-                <th className="py-3 px-2 text-right">Aktuelle Rate</th>
-                <th className="py-3 px-2 text-right">Neue Rate</th>
-                <th className="py-3 px-2 text-right">Mehrbelastung</th>
-              </tr>
-            </thead>
-            <tbody>
-              {stressTests.interestStress.map((s, i) => (
-                <tr key={i} className="border-b border-slate-800">
-                  <td className="py-3 px-2 text-white font-medium">{s.name}</td>
-                  <td className="py-3 px-2 text-right text-slate-300"><Money value={s.oldPayment} privacy={privacy} /></td>
-                  <td className="py-3 px-2 text-right text-amber-400"><Money value={s.newPayment} privacy={privacy} /></td>
-                  <td className="py-3 px-2 text-right text-red-400">+<Money value={s.increase} privacy={privacy} /></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </Card>
-
-      {/* Portfolio Diversification */}
-      <Card>
-        <h4 className="text-lg font-semibold text-white mb-4">Portfolio-Diversifikation</h4>
-        {properties.length === 1 ? (
-          <div className="flex items-center gap-3 p-4 bg-amber-500/10 rounded-lg border border-amber-500/20">
-            <AlertTriangle className="text-amber-400" size={24} />
-            <div>
-              <p className="text-amber-400 font-medium">Klumpenrisiko</p>
-              <p className="text-slate-400 text-sm">Nur eine Immobilie im Portfolio. Diversifikation durch weitere Objekte erhöht die Stabilität.</p>
-            </div>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {properties.map(p => {
-              const share = (p.currentValue / currentTotals.totalValue) * 100;
-              return (
-                <div key={p.id} className="flex items-center justify-between p-3 bg-slate-800 rounded-lg">
-                  <div>
-                    <p className="text-white font-medium">{p.name}</p>
-                    <p className="text-slate-400 text-sm">{p.address}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-white font-bold">{share.toFixed(1)}%</p>
-                    <p className="text-slate-400 text-sm"><Money value={p.currentValue} privacy={privacy} /></p>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </Card>
-    </div>
-  );
-};
-
 // ===================== TAX EÜR CALCULATOR =====================
 
 const TaxEURCalculator: React.FC<{
@@ -3716,6 +2086,7 @@ const BusinessPlanCalculator: React.FC<{ privacy: boolean }> = ({ privacy }) => 
 
   // Units state
   const [units, setUnits] = useState<UnitConfig[]>(DEFAULT_UNITS);
+  const [pricePerSqm, setPricePerSqm] = useState(5500); // EUR/m²
 
   // Financing state
   const [eigenkapital, setEigenkapital] = useState(100000);
@@ -3744,6 +2115,7 @@ const BusinessPlanCalculator: React.FC<{ privacy: boolean }> = ({ privacy }) => 
           setNebenkostenItems(savedPlan.nebenkostenItems as NebenkostenItem[]);
           setBaukostenzuschuss(savedPlan.baukostenzuschuss);
           setUnits(savedPlan.units as UnitConfig[]);
+          if (savedPlan.pricePerSqm) setPricePerSqm(savedPlan.pricePerSqm);
           setEigenkapital(savedPlan.eigenkapital);
           setZinssatz(savedPlan.zinssatz);
           setTilgung(savedPlan.tilgung);
@@ -3777,7 +2149,8 @@ const BusinessPlanCalculator: React.FC<{ privacy: boolean }> = ({ privacy }) => 
           costs: costs.map(c => ({ id: c.id, name: c.name, amount: c.amount, description: c.description })),
           nebenkostenItems: nebenkostenItems.map(n => ({ id: n.id, name: n.name, amount: n.amount, description: n.description })),
           baukostenzuschuss,
-          units: units.map(u => ({ id: u.id, name: u.name, size: u.size, monthlyRent: u.monthlyRent, marketValue: u.marketValue, isOwned: u.isOwned })),
+          units: units.map(u => ({ id: u.id, name: u.name, size: u.size, monthlyRent: u.monthlyRent, marketValue: u.size * pricePerSqm, isOwned: u.isOwned })),
+          pricePerSqm,
           eigenkapital,
           zinssatz,
           tilgung,
@@ -3797,7 +2170,7 @@ const BusinessPlanCalculator: React.FC<{ privacy: boolean }> = ({ privacy }) => 
     }, 1000); // 1 second debounce
 
     return () => clearTimeout(saveTimeout);
-  }, [costs, nebenkostenItems, baukostenzuschuss, units, eigenkapital, zinssatz, tilgung, zinsbindung, bewirtschaftungskostenPercent, costOverrun, vacancyMonths, futureInterestIncrease, isLoading]);
+  }, [costs, nebenkostenItems, baukostenzuschuss, units, pricePerSqm, eigenkapital, zinssatz, tilgung, zinsbindung, bewirtschaftungskostenPercent, costOverrun, vacancyMonths, futureInterestIncrease, isLoading]);
 
   // Toggle section
   const toggleSection = (id: string) => {
@@ -3847,12 +2220,13 @@ const BusinessPlanCalculator: React.FC<{ privacy: boolean }> = ({ privacy }) => 
     // Kosten nach Abzug des Baukostenzuschusses
     const totalCostsNetto = Math.max(0, totalCostsWithOverrun - baukostenzuschuss);
 
-    // Units analysis
+    // Units analysis - Market value calculated from pricePerSqm
     const ownedUnits = units.filter(u => u.isOwned);
     const otherUnits = units.filter(u => !u.isOwned);
     const totalMonthlyRent = ownedUnits.reduce((sum, u) => sum + u.monthlyRent, 0);
-    const totalMarketValue = ownedUnits.reduce((sum, u) => sum + u.marketValue, 0);
+    const totalMarketValue = ownedUnits.reduce((sum, u) => sum + u.size * pricePerSqm, 0);
     const totalSize = ownedUnits.reduce((sum, u) => sum + u.size, 0);
+    const allUnitsMarketValue = units.reduce((sum, u) => sum + u.size * pricePerSqm, 0);
 
     // Financing - basierend auf Nettokosten (nach Zuschuss)
     const kreditbetrag = Math.max(0, totalCostsNetto - eigenkapital);
@@ -3913,6 +2287,8 @@ const BusinessPlanCalculator: React.FC<{ privacy: boolean }> = ({ privacy }) => 
       totalMonthlyRent,
       totalMarketValue,
       totalSize,
+      allUnitsMarketValue,
+      pricePerSqm,
       // Financing
       kreditbetrag,
       monthlyRate,
@@ -3932,7 +2308,7 @@ const BusinessPlanCalculator: React.FC<{ privacy: boolean }> = ({ privacy }) => 
       bruttomietrendite,
       nettomietrendite,
     };
-  }, [costs, nebenkostenItems, costOverrun, baukostenzuschuss, units, eigenkapital, zinssatz, tilgung, zinsbindung, vacancyMonths, futureInterestIncrease, bewirtschaftungskostenPercent]);
+  }, [costs, nebenkostenItems, costOverrun, baukostenzuschuss, units, pricePerSqm, eigenkapital, zinssatz, tilgung, zinsbindung, vacancyMonths, futureInterestIncrease, bewirtschaftungskostenPercent]);
 
   // Timeline phases
   const timelinePhases: TimelinePhase[] = [
@@ -4181,6 +2557,27 @@ const BusinessPlanCalculator: React.FC<{ privacy: boolean }> = ({ privacy }) => 
         <SectionHeader id="units" title="Wohneinheiten" icon={<Home size={16} className="text-white" />} color="bg-blue-500" />
         {expandedSections.units && (
           <div className="mt-4 space-y-4">
+            {/* Price per sqm Slider */}
+            <div className="p-4 bg-gradient-to-r from-blue-900/30 to-indigo-900/30 rounded-lg border border-blue-500/30">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-slate-300 font-medium">Preis pro m²</span>
+                <span className="text-2xl font-bold text-blue-400">€{pricePerSqm.toLocaleString()}/m²</span>
+              </div>
+              <input
+                type="range"
+                min="2000"
+                max="12000"
+                step="100"
+                value={pricePerSqm}
+                onChange={(e) => setPricePerSqm(Number(e.target.value))}
+                className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
+              />
+              <div className="flex justify-between text-xs text-slate-500 mt-1">
+                <span>€2.000</span>
+                <span>€12.000</span>
+              </div>
+            </div>
+
             <div className="overflow-x-auto">
               <table className="w-full text-left">
                 <thead>
@@ -4188,7 +2585,7 @@ const BusinessPlanCalculator: React.FC<{ privacy: boolean }> = ({ privacy }) => 
                     <th className="py-2 px-2">Einheit</th>
                     <th className="py-2 px-2 text-center">m²</th>
                     <th className="py-2 px-2 text-center">Miete/Mo (€)</th>
-                    <th className="py-2 px-2 text-center">Marktwert (€)</th>
+                    <th className="py-2 px-2 text-center">Marktwert (berechnet)</th>
                     <th className="py-2 px-2 text-center">Eigentum</th>
                     <th className="py-2 px-2 text-center">Aktion</th>
                   </tr>
@@ -4221,12 +2618,9 @@ const BusinessPlanCalculator: React.FC<{ privacy: boolean }> = ({ privacy }) => 
                         />
                       </td>
                       <td className="py-3 px-2 text-center">
-                        <Input
-                          type="number"
-                          value={unit.marketValue}
-                          onChange={(e) => updateUnit(unit.id, 'marketValue', Number(e.target.value))}
-                          className="w-28 text-center"
-                        />
+                        <span className="text-blue-400 font-medium">
+                          €{(unit.size * pricePerSqm).toLocaleString()}
+                        </span>
                       </td>
                       <td className="py-3 px-2 text-center">
                         <input
@@ -4281,40 +2675,90 @@ const BusinessPlanCalculator: React.FC<{ privacy: boolean }> = ({ privacy }) => 
         <SectionHeader id="financing" title="Finanzierung" icon={<PiggyBank size={16} className="text-white" />} color="bg-purple-500" />
         {expandedSections.financing && (
           <div className="mt-4 space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              <div>
-                <label className="block text-sm text-slate-400 mb-1">Eigenkapital (€)</label>
-                <Input
-                  type="number"
+            {/* Financing Sliders */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Eigenkapital Slider */}
+              <div className="p-4 bg-slate-800/50 rounded-lg">
+                <div className="flex justify-between items-center mb-2">
+                  <label className="text-slate-300 font-medium">Eigenkapital</label>
+                  <span className="text-xl font-bold text-purple-400">€{eigenkapital.toLocaleString()}</span>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="500000"
+                  step="10000"
                   value={eigenkapital}
                   onChange={(e) => setEigenkapital(Number(e.target.value))}
+                  className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-purple-500"
                 />
+                <div className="flex justify-between text-xs text-slate-500 mt-1">
+                  <span>€0</span>
+                  <span>€500.000</span>
+                </div>
               </div>
-              <div>
-                <label className="block text-sm text-slate-400 mb-1">Zinssatz (%)</label>
-                <Input
-                  type="number"
+
+              {/* Zinssatz Slider */}
+              <div className="p-4 bg-slate-800/50 rounded-lg">
+                <div className="flex justify-between items-center mb-2">
+                  <label className="text-slate-300 font-medium">Zinssatz</label>
+                  <span className="text-xl font-bold text-purple-400">{zinssatz.toFixed(1)}%</span>
+                </div>
+                <input
+                  type="range"
+                  min="1"
+                  max="8"
                   step="0.1"
                   value={zinssatz}
                   onChange={(e) => setZinssatz(Number(e.target.value))}
+                  className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-purple-500"
                 />
+                <div className="flex justify-between text-xs text-slate-500 mt-1">
+                  <span>1%</span>
+                  <span>8%</span>
+                </div>
               </div>
-              <div>
-                <label className="block text-sm text-slate-400 mb-1">Tilgung (%)</label>
-                <Input
-                  type="number"
+
+              {/* Tilgung Slider */}
+              <div className="p-4 bg-slate-800/50 rounded-lg">
+                <div className="flex justify-between items-center mb-2">
+                  <label className="text-slate-300 font-medium">Tilgung</label>
+                  <span className="text-xl font-bold text-purple-400">{tilgung.toFixed(1)}%</span>
+                </div>
+                <input
+                  type="range"
+                  min="1"
+                  max="5"
                   step="0.1"
                   value={tilgung}
                   onChange={(e) => setTilgung(Number(e.target.value))}
+                  className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-purple-500"
                 />
+                <div className="flex justify-between text-xs text-slate-500 mt-1">
+                  <span>1%</span>
+                  <span>5%</span>
+                </div>
               </div>
-              <div>
-                <label className="block text-sm text-slate-400 mb-1">Zinsbindung (Jahre)</label>
-                <Input
-                  type="number"
+
+              {/* Zinsbindung Slider */}
+              <div className="p-4 bg-slate-800/50 rounded-lg">
+                <div className="flex justify-between items-center mb-2">
+                  <label className="text-slate-300 font-medium">Zinsbindung</label>
+                  <span className="text-xl font-bold text-purple-400">{zinsbindung} Jahre</span>
+                </div>
+                <input
+                  type="range"
+                  min="5"
+                  max="30"
+                  step="1"
                   value={zinsbindung}
                   onChange={(e) => setZinsbindung(Number(e.target.value))}
+                  className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-purple-500"
                 />
+                <div className="flex justify-between text-xs text-slate-500 mt-1">
+                  <span>5 J</span>
+                  <span>30 J</span>
+                </div>
               </div>
             </div>
 
@@ -4616,6 +3060,375 @@ const BusinessPlanCalculator: React.FC<{ privacy: boolean }> = ({ privacy }) => 
           <li>• Dieser Businessplan dient als Planungshilfe. Für Bankgespräche individuell anpassen und durch Fachleute prüfen lassen.</li>
         </ul>
       </Card>
+    </div>
+  );
+};
+
+// ===================== BUSINESS PLAN DOCUMENT =====================
+
+const BusinessPlanDocument: React.FC<{ privacy: boolean }> = ({ privacy }) => {
+  const [isLoading, setIsLoading] = useState(true);
+  const [planData, setPlanData] = useState<BusinessPlanData | null>(null);
+  const documentRef = React.useRef<HTMLDivElement>(null);
+
+  // Load business plan data
+  useEffect(() => {
+    const loadData = async () => {
+      setIsLoading(true);
+      try {
+        const plans = await StorageService.getBusinessPlans();
+        const savedPlan = plans.find(p => p.id === BUSINESS_PLAN_ID);
+        if (savedPlan) {
+          setPlanData(savedPlan);
+        }
+      } catch (e) {
+        console.error("Failed to load business plan:", e);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    loadData();
+  }, []);
+
+  // Calculate derived values
+  const calculations = useMemo(() => {
+    if (!planData) return null;
+
+    const baseCosts = planData.costs.reduce((sum, c) => sum + c.amount, 0);
+    const nebenkosten = planData.nebenkostenItems.reduce((sum, n) => sum + n.amount, 0);
+    const totalCosts = baseCosts + nebenkosten - planData.baukostenzuschuss;
+    const pricePerSqm = planData.pricePerSqm || 5500;
+
+    const ownedUnits = planData.units.filter(u => u.isOwned);
+    const totalSize = ownedUnits.reduce((sum, u) => sum + u.size, 0);
+    const totalMonthlyRent = ownedUnits.reduce((sum, u) => sum + u.monthlyRent, 0);
+    const totalMarketValue = ownedUnits.reduce((sum, u) => sum + u.size * pricePerSqm, 0);
+    const yearlyRent = totalMonthlyRent * 12;
+
+    const kreditbetrag = Math.max(0, totalCosts - planData.eigenkapital);
+    const annualRate = (planData.zinssatz + planData.tilgung) / 100;
+    const monthlyRate = kreditbetrag * annualRate / 12;
+    const yearlyRate = monthlyRate * 12;
+
+    const bewirtschaftungskosten = yearlyRent * (planData.bewirtschaftungskostenPercent / 100);
+    const noi = yearlyRent - bewirtschaftungskosten;
+    const dscr = yearlyRate > 0 ? noi / yearlyRate : 0;
+    const cashflowBeforeTax = noi - yearlyRate;
+
+    const bruttomietrendite = totalMarketValue > 0 ? (yearlyRent / totalMarketValue) * 100 : 0;
+    const nettomietrendite = totalMarketValue > 0 ? (noi / totalMarketValue) * 100 : 0;
+    const roiEquity = planData.eigenkapital > 0 ? (cashflowBeforeTax / planData.eigenkapital) * 100 : 0;
+
+    return {
+      baseCosts,
+      nebenkosten,
+      totalCosts,
+      pricePerSqm,
+      ownedUnits,
+      totalSize,
+      totalMonthlyRent,
+      totalMarketValue,
+      yearlyRent,
+      kreditbetrag,
+      monthlyRate,
+      yearlyRate,
+      bewirtschaftungskosten,
+      noi,
+      dscr,
+      cashflowBeforeTax,
+      bruttomietrendite,
+      nettomietrendite,
+      roiEquity,
+    };
+  }, [planData]);
+
+  const handlePrint = () => {
+    window.print();
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="w-8 h-8 text-primary animate-spin" />
+        <span className="ml-3 text-slate-400">Lade Businessplan-Daten...</span>
+      </div>
+    );
+  }
+
+  if (!planData || !calculations) {
+    return (
+      <Card className="text-center py-12">
+        <FileText size={48} className="mx-auto text-slate-600 mb-4" />
+        <h3 className="text-xl font-bold text-white mb-2">Kein Businessplan vorhanden</h3>
+        <p className="text-slate-400">Erstellen Sie zuerst einen Businessplan im "Businessplan" Tab.</p>
+      </Card>
+    );
+  }
+
+  const formatCurrency = (val: number) => privacy ? '****' : `€${val.toLocaleString('de-DE', { maximumFractionDigits: 0 })}`;
+  const formatPercent = (val: number) => `${val.toFixed(1)}%`;
+  const today = new Date().toLocaleDateString('de-DE', { year: 'numeric', month: 'long', day: 'numeric' });
+
+  return (
+    <div className="space-y-6">
+      {/* Header with PDF Button */}
+      <div className="flex items-center justify-between mb-6 print:hidden">
+        <div className="flex items-center gap-4">
+          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-teal-500 to-emerald-600 flex items-center justify-center">
+            <FileText size={24} className="text-white" />
+          </div>
+          <div>
+            <h2 className="text-xl font-bold text-white">Businessplan Dokument</h2>
+            <p className="text-slate-400 text-sm">Professioneller Businessplan zum Download</p>
+          </div>
+        </div>
+        <Button onClick={handlePrint} className="bg-teal-600 hover:bg-teal-700">
+          <FileText size={18} /> PDF herunterladen
+        </Button>
+      </div>
+
+      {/* Printable Document */}
+      <div ref={documentRef} className="bg-white text-slate-900 rounded-xl p-8 print:p-0 print:bg-white print:text-black">
+        {/* Document Header */}
+        <div className="border-b-2 border-slate-200 pb-6 mb-8">
+          <h1 className="text-3xl font-bold text-slate-900 mb-2">Businessplan</h1>
+          <h2 className="text-xl text-slate-600 mb-4">Neubau Mehrfamilienhaus mit Vermietung</h2>
+          <p className="text-sm text-slate-500">Erstellt am: {today}</p>
+        </div>
+
+        {/* Executive Summary */}
+        <section className="mb-8">
+          <h2 className="text-xl font-bold text-slate-900 border-b border-slate-200 pb-2 mb-4">1. Executive Summary</h2>
+          <div className="prose prose-slate max-w-none">
+            <p className="mb-4">
+              Das vorliegende Projekt umfasst den Neubau eines Mehrfamilienhauses mit <strong>{planData.units.length} Wohneinheiten</strong> 
+              und einer Gesamtwohnfläche von <strong>{planData.units.reduce((s, u) => s + u.size, 0)} m²</strong>. 
+              Von diesen Einheiten sind <strong>{calculations.ownedUnits.length} Wohnungen</strong> ({calculations.totalSize} m²) zur Vermietung bestimmt.
+            </p>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 my-6 not-prose">
+              <div className="bg-slate-100 p-4 rounded-lg">
+                <p className="text-xs text-slate-500 uppercase">Investitionsvolumen</p>
+                <p className="text-lg font-bold text-slate-900">{formatCurrency(calculations.totalCosts)}</p>
+              </div>
+              <div className="bg-slate-100 p-4 rounded-lg">
+                <p className="text-xs text-slate-500 uppercase">Eigenkapital</p>
+                <p className="text-lg font-bold text-slate-900">{formatCurrency(planData.eigenkapital)}</p>
+              </div>
+              <div className="bg-slate-100 p-4 rounded-lg">
+                <p className="text-xs text-slate-500 uppercase">Fremdkapital</p>
+                <p className="text-lg font-bold text-slate-900">{formatCurrency(calculations.kreditbetrag)}</p>
+              </div>
+              <div className="bg-slate-100 p-4 rounded-lg">
+                <p className="text-xs text-slate-500 uppercase">Geschätzter Marktwert</p>
+                <p className="text-lg font-bold text-emerald-600">{formatCurrency(calculations.totalMarketValue)}</p>
+              </div>
+            </div>
+            <p>
+              Die geplanten jährlichen Mieteinnahmen belaufen sich auf <strong>{formatCurrency(calculations.yearlyRent)}</strong> 
+              ({formatCurrency(calculations.totalMonthlyRent)}/Monat). Der Debt Service Coverage Ratio (DSCR) beträgt 
+              <strong className={calculations.dscr >= 1.2 ? ' text-emerald-600' : calculations.dscr >= 1 ? ' text-amber-600' : ' text-red-600'}> {calculations.dscr.toFixed(2)}</strong>, 
+              was {calculations.dscr >= 1.2 ? 'eine komfortable Absicherung' : calculations.dscr >= 1 ? 'eine ausreichende Deckung' : 'ein erhöhtes Risiko'} darstellt.
+            </p>
+          </div>
+        </section>
+
+        {/* Projektbeschreibung */}
+        <section className="mb-8 page-break-inside-avoid">
+          <h2 className="text-xl font-bold text-slate-900 border-b border-slate-200 pb-2 mb-4">2. Projektbeschreibung</h2>
+          <div className="prose prose-slate max-w-none">
+            <h3 className="text-lg font-semibold mb-2">2.1 Baukosten</h3>
+            <table className="w-full text-sm mb-4">
+              <thead className="bg-slate-100">
+                <tr><th className="text-left p-2">Position</th><th className="text-right p-2">Betrag</th></tr>
+              </thead>
+              <tbody>
+                {planData.costs.map(c => (
+                  <tr key={c.id} className="border-b border-slate-200">
+                    <td className="p-2">{c.name}</td>
+                    <td className="text-right p-2">{formatCurrency(c.amount)}</td>
+                  </tr>
+                ))}
+                <tr className="font-semibold bg-slate-50">
+                  <td className="p-2">Zwischensumme Baukosten</td>
+                  <td className="text-right p-2">{formatCurrency(calculations.baseCosts)}</td>
+                </tr>
+                <tr className="border-b border-slate-200">
+                  <td className="p-2">Nebenkosten (Architekt, Notar, etc.)</td>
+                  <td className="text-right p-2">{formatCurrency(calculations.nebenkosten)}</td>
+                </tr>
+                {planData.baukostenzuschuss > 0 && (
+                  <tr className="border-b border-slate-200 text-emerald-600">
+                    <td className="p-2">Baukostenzuschuss (Förderung)</td>
+                    <td className="text-right p-2">-{formatCurrency(planData.baukostenzuschuss)}</td>
+                  </tr>
+                )}
+                <tr className="font-bold bg-slate-100">
+                  <td className="p-2">Gesamtinvestition</td>
+                  <td className="text-right p-2">{formatCurrency(calculations.totalCosts)}</td>
+                </tr>
+              </tbody>
+            </table>
+
+            <h3 className="text-lg font-semibold mb-2">2.2 Wohneinheiten</h3>
+            <table className="w-full text-sm mb-4">
+              <thead className="bg-slate-100">
+                <tr>
+                  <th className="text-left p-2">Einheit</th>
+                  <th className="text-right p-2">Größe</th>
+                  <th className="text-right p-2">Miete/Mo</th>
+                  <th className="text-right p-2">Marktwert</th>
+                  <th className="text-center p-2">Eigentum</th>
+                </tr>
+              </thead>
+              <tbody>
+                {planData.units.map(u => (
+                  <tr key={u.id} className="border-b border-slate-200">
+                    <td className="p-2">{u.name}</td>
+                    <td className="text-right p-2">{u.size} m²</td>
+                    <td className="text-right p-2">{formatCurrency(u.monthlyRent)}</td>
+                    <td className="text-right p-2">{formatCurrency(u.size * calculations.pricePerSqm)}</td>
+                    <td className="text-center p-2">{u.isOwned ? '✓ Investor' : '— Andere'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <p className="text-sm text-slate-600">
+              Berechnungsgrundlage Marktwert: {formatCurrency(calculations.pricePerSqm)}/m²
+            </p>
+          </div>
+        </section>
+
+        {/* Finanzierung */}
+        <section className="mb-8 page-break-inside-avoid">
+          <h2 className="text-xl font-bold text-slate-900 border-b border-slate-200 pb-2 mb-4">3. Finanzierung</h2>
+          <div className="prose prose-slate max-w-none">
+            <div className="grid grid-cols-2 gap-6 mb-4 not-prose">
+              <div>
+                <h3 className="text-lg font-semibold mb-2">Kapitalstruktur</h3>
+                <table className="w-full text-sm">
+                  <tbody>
+                    <tr className="border-b"><td className="p-2">Eigenkapital</td><td className="text-right p-2 font-medium">{formatCurrency(planData.eigenkapital)}</td></tr>
+                    <tr className="border-b"><td className="p-2">Fremdkapital</td><td className="text-right p-2 font-medium">{formatCurrency(calculations.kreditbetrag)}</td></tr>
+                    <tr className="bg-slate-50 font-semibold"><td className="p-2">Gesamt</td><td className="text-right p-2">{formatCurrency(calculations.totalCosts)}</td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold mb-2">Kreditkonditionen</h3>
+                <table className="w-full text-sm">
+                  <tbody>
+                    <tr className="border-b"><td className="p-2">Zinssatz</td><td className="text-right p-2 font-medium">{formatPercent(planData.zinssatz)}</td></tr>
+                    <tr className="border-b"><td className="p-2">Tilgung</td><td className="text-right p-2 font-medium">{formatPercent(planData.tilgung)}</td></tr>
+                    <tr className="border-b"><td className="p-2">Zinsbindung</td><td className="text-right p-2 font-medium">{planData.zinsbindung} Jahre</td></tr>
+                    <tr className="bg-slate-50 font-semibold"><td className="p-2">Monatliche Rate</td><td className="text-right p-2">{formatCurrency(calculations.monthlyRate)}</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* Wirtschaftlichkeit */}
+        <section className="mb-8 page-break-inside-avoid">
+          <h2 className="text-xl font-bold text-slate-900 border-b border-slate-200 pb-2 mb-4">4. Wirtschaftlichkeitsberechnung</h2>
+          <div className="grid grid-cols-2 gap-6 mb-4">
+            <div>
+              <h3 className="text-lg font-semibold mb-2">Einnahmen & Ausgaben (p.a.)</h3>
+              <table className="w-full text-sm">
+                <tbody>
+                  <tr className="border-b"><td className="p-2">Mieteinnahmen (brutto)</td><td className="text-right p-2 text-emerald-600 font-medium">+{formatCurrency(calculations.yearlyRent)}</td></tr>
+                  <tr className="border-b"><td className="p-2">Bewirtschaftungskosten ({planData.bewirtschaftungskostenPercent}%)</td><td className="text-right p-2 text-red-600">-{formatCurrency(calculations.bewirtschaftungskosten)}</td></tr>
+                  <tr className="bg-slate-50 font-semibold"><td className="p-2">NOI (Net Operating Income)</td><td className="text-right p-2">{formatCurrency(calculations.noi)}</td></tr>
+                  <tr className="border-b"><td className="p-2">Kapitaldienst</td><td className="text-right p-2 text-red-600">-{formatCurrency(calculations.yearlyRate)}</td></tr>
+                  <tr className={`font-bold ${calculations.cashflowBeforeTax >= 0 ? 'bg-emerald-50' : 'bg-red-50'}`}>
+                    <td className="p-2">Cashflow vor Steuern</td>
+                    <td className={`text-right p-2 ${calculations.cashflowBeforeTax >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{formatCurrency(calculations.cashflowBeforeTax)}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold mb-2">Kennzahlen</h3>
+              <table className="w-full text-sm">
+                <tbody>
+                  <tr className="border-b"><td className="p-2">Bruttomietrendite</td><td className="text-right p-2 font-medium">{formatPercent(calculations.bruttomietrendite)}</td></tr>
+                  <tr className="border-b"><td className="p-2">Nettomietrendite</td><td className="text-right p-2 font-medium">{formatPercent(calculations.nettomietrendite)}</td></tr>
+                  <tr className="border-b"><td className="p-2">Eigenkapitalrendite</td><td className="text-right p-2 font-medium">{formatPercent(calculations.roiEquity)}</td></tr>
+                  <tr className={`font-semibold ${calculations.dscr >= 1.2 ? 'bg-emerald-50' : calculations.dscr >= 1 ? 'bg-amber-50' : 'bg-red-50'}`}>
+                    <td className="p-2">DSCR</td>
+                    <td className={`text-right p-2 ${calculations.dscr >= 1.2 ? 'text-emerald-600' : calculations.dscr >= 1 ? 'text-amber-600' : 'text-red-600'}`}>{calculations.dscr.toFixed(2)}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        {/* Risikoanalyse */}
+        <section className="mb-8 page-break-inside-avoid">
+          <h2 className="text-xl font-bold text-slate-900 border-b border-slate-200 pb-2 mb-4">5. Risikoanalyse</h2>
+          <div className="prose prose-slate max-w-none">
+            <ul className="space-y-2">
+              <li><strong>Baurisiken:</strong> Kostensteigerungen während der Bauphase (aktuell {planData.costOverrun}% eingeplant). Absicherung durch Festpreisverträge und Puffer empfohlen.</li>
+              <li><strong>Vermietungsrisiko:</strong> Leerstand kann zu Einnahmeausfällen führen (aktuell {planData.vacancyMonths} Monate/Jahr kalkuliert). Vermarktung vor Fertigstellung beginnen.</li>
+              <li><strong>Zinsänderungsrisiko:</strong> Nach Ablauf der {planData.zinsbindung}-jährigen Zinsbindung können Zinsen steigen (aktuell +{planData.futureInterestIncrease}% eingeplant).</li>
+              <li><strong>DSCR-Bewertung:</strong> {calculations.dscr >= 1.2 ? 'Komfortable Absicherung mit ausreichend Puffer.' : calculations.dscr >= 1 ? 'Deckung gegeben, aber geringer Puffer.' : 'Kritisch! Liquiditätsreserven zwingend erforderlich.'}</li>
+            </ul>
+          </div>
+        </section>
+
+        {/* Fazit */}
+        <section className="mb-8 page-break-inside-avoid">
+          <h2 className="text-xl font-bold text-slate-900 border-b border-slate-200 pb-2 mb-4">6. Fazit</h2>
+          <div className="prose prose-slate max-w-none">
+            <p>
+              Das Projekt bietet eine Investitionsmöglichkeit mit einem geschätzten Marktwert von <strong>{formatCurrency(calculations.totalMarketValue)}</strong> 
+              bei einer Gesamtinvestition von {formatCurrency(calculations.totalCosts)}. 
+              {calculations.totalMarketValue > calculations.totalCosts && (
+                <span> Dies entspricht einer potenziellen Wertsteigerung von <strong>{formatCurrency(calculations.totalMarketValue - calculations.totalCosts)}</strong> ({formatPercent((calculations.totalMarketValue - calculations.totalCosts) / calculations.totalCosts * 100)}).</span>
+              )}
+            </p>
+            <p>
+              Mit einem {calculations.cashflowBeforeTax >= 0 ? 'positiven' : 'negativen'} jährlichen Cashflow von {formatCurrency(Math.abs(calculations.cashflowBeforeTax))} 
+              und einem DSCR von {calculations.dscr.toFixed(2)} {calculations.dscr >= 1.2 ? 'ist das Projekt gut abgesichert' : calculations.dscr >= 1 ? 'deckt das Projekt seine laufenden Kosten' : 'erfordert das Projekt zusätzliche Liquiditätsreserven'}.
+            </p>
+            <p className="text-sm text-slate-500 mt-6">
+              Hinweis: Dieser Businessplan dient als Planungshilfe und ersetzt keine professionelle Beratung. 
+              Für Finanzierungsgespräche mit Banken sollte dieser Plan individuell angepasst und durch Fachleute geprüft werden.
+            </p>
+          </div>
+        </section>
+
+        {/* Footer */}
+        <div className="border-t border-slate-200 pt-4 mt-8 text-center text-xs text-slate-500">
+          <p>Erstellt mit FinanceCS • {today}</p>
+        </div>
+      </div>
+
+      {/* Print Styles */}
+      <style>{`
+        @media print {
+          body * {
+            visibility: hidden;
+          }
+          .print\\:hidden {
+            display: none !important;
+          }
+          [class*="bg-white"] {
+            visibility: visible;
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 100%;
+          }
+          [class*="bg-white"] * {
+            visibility: visible;
+          }
+          .page-break-inside-avoid {
+            page-break-inside: avoid;
+          }
+        }
+      `}</style>
     </div>
   );
 };
