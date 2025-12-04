@@ -8,6 +8,8 @@ import {
   X,
   TrendingUp,
   Building2,
+  ChevronUp,
+  ChevronDown,
   Wallet,
   PiggyBank,
   Calculator,
@@ -3632,6 +3634,13 @@ interface BusinessPlanCost {
   description?: string;
 }
 
+interface NebenkostenItem {
+  id: string;
+  name: string;
+  amount: number;
+  description?: string;
+}
+
 interface UnitConfig {
   id: string;
   name: string;
@@ -3670,6 +3679,17 @@ const DEFAULT_UNITS: UnitConfig[] = [
   { id: '5', name: 'Wohnung 5', size: 70, monthlyRent: 1200, marketValue: 400000, isOwned: false },
 ];
 
+const DEFAULT_NEBENKOSTEN: NebenkostenItem[] = [
+  { id: 'architekt', name: 'Architekt & Statik', amount: 0, description: '3-5% der Baukosten' },
+  { id: 'baugenehmigung', name: 'Baugenehmigung & Behörden', amount: 0, description: 'Bauantrag, Prüfungen' },
+  { id: 'vermessung', name: 'Vermessung & Bodengutachten', amount: 0, description: 'Baugrundgutachten, Absteckung' },
+  { id: 'versicherung', name: 'Bauversicherung', amount: 0, description: 'Bauleistungs-, Bauherrenhaftpflicht' },
+  { id: 'anschluss', name: 'Anschlusskosten', amount: 0, description: 'Strom, Wasser, Kanal, Gas' },
+  { id: 'notar', name: 'Notar & Grundbuch', amount: 0, description: 'Grundschuldbestellung, Teilungserklärung' },
+  { id: 'finanzierung', name: 'Finanzierungskosten', amount: 0, description: 'Bereitstellungszinsen, Schätzkosten' },
+  { id: 'sonstiges', name: 'Sonstiges & Puffer', amount: 0, description: 'Unvorhergesehenes' },
+];
+
 const BusinessPlanCalculator: React.FC<{ privacy: boolean }> = ({ privacy }) => {
   // State for collapsible sections
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
@@ -3683,7 +3703,8 @@ const BusinessPlanCalculator: React.FC<{ privacy: boolean }> = ({ privacy }) => 
 
   // Costs state
   const [costs, setCosts] = useState<BusinessPlanCost[]>(DEFAULT_BP_COSTS);
-  const [nebenkostenPercent, setNebenkostenPercent] = useState(12); // 10-15%
+  const [nebenkostenItems, setNebenkostenItems] = useState<NebenkostenItem[]>(DEFAULT_NEBENKOSTEN);
+  const [showNebenkostenDetail, setShowNebenkostenDetail] = useState(false);
   const [baukostenzuschuss, setBaukostenzuschuss] = useState(0); // Zuschuss von BEG, KfW etc.
 
   // Units state
@@ -3713,6 +3734,11 @@ const BusinessPlanCalculator: React.FC<{ privacy: boolean }> = ({ privacy }) => 
     setCosts(prev => prev.map(c => c.id === id ? { ...c, amount } : c));
   };
 
+  // Update nebenkosten item
+  const updateNebenkostenItem = (id: string, amount: number) => {
+    setNebenkostenItems(prev => prev.map(n => n.id === id ? { ...n, amount } : n));
+  };
+
   // Update unit
   const updateUnit = (id: string, field: keyof UnitConfig, value: number | boolean | string) => {
     setUnits(prev => prev.map(u => u.id === id ? { ...u, [field]: value } : u));
@@ -3740,7 +3766,7 @@ const BusinessPlanCalculator: React.FC<{ privacy: boolean }> = ({ privacy }) => 
   const calculations = useMemo(() => {
     // Total costs
     const baseCosts = costs.reduce((sum, c) => sum + c.amount, 0);
-    const nebenkosten = baseCosts * (nebenkostenPercent / 100);
+    const nebenkosten = nebenkostenItems.reduce((sum, n) => sum + n.amount, 0);
     const totalCostsBase = baseCosts + nebenkosten;
     const totalCostsWithOverrun = totalCostsBase * (1 + costOverrun / 100);
     // Kosten nach Abzug des Baukostenzuschusses
@@ -3831,7 +3857,7 @@ const BusinessPlanCalculator: React.FC<{ privacy: boolean }> = ({ privacy }) => 
       bruttomietrendite,
       nettomietrendite,
     };
-  }, [costs, nebenkostenPercent, costOverrun, baukostenzuschuss, units, eigenkapital, zinssatz, tilgung, zinsbindung, vacancyMonths, futureInterestIncrease, bewirtschaftungskostenPercent]);
+  }, [costs, nebenkostenItems, costOverrun, baukostenzuschuss, units, eigenkapital, zinssatz, tilgung, zinsbindung, vacancyMonths, futureInterestIncrease, bewirtschaftungskostenPercent]);
 
   // Timeline phases
   const timelinePhases: TimelinePhase[] = [
@@ -3948,24 +3974,59 @@ const BusinessPlanCalculator: React.FC<{ privacy: boolean }> = ({ privacy }) => 
               </table>
             </div>
 
-            <div className="flex items-center justify-between p-4 bg-slate-800/50 rounded-lg">
-              <div className="flex items-center gap-4">
-                <span className="text-slate-400">Nebenkosten:</span>
-                <input
-                  type="range"
-                  min="8"
-                  max="18"
-                  step="1"
-                  value={nebenkostenPercent}
-                  onChange={(e) => setNebenkostenPercent(Number(e.target.value))}
-                  className="w-32 accent-amber-500"
-                />
-                <span className="text-amber-400 font-medium">{nebenkostenPercent}%</span>
-              </div>
-              <div className="text-right">
-                <span className="text-slate-400 text-sm">= </span>
-                <span className="text-amber-400 font-bold"><Money value={calculations.nebenkosten} privacy={privacy} fractionDigits={0} /></span>
-              </div>
+            {/* Nebenkosten Section */}
+            <div className="border border-slate-700 rounded-lg overflow-hidden">
+              <button
+                onClick={() => setShowNebenkostenDetail(!showNebenkostenDetail)}
+                className="w-full flex items-center justify-between p-4 bg-slate-800/50 hover:bg-slate-800 transition-colors"
+              >
+                <div className="flex items-center gap-4">
+                  <span className="text-slate-400">Nebenkosten:</span>
+                  <span className="text-amber-400 font-bold"><Money value={calculations.nebenkosten} privacy={privacy} fractionDigits={0} /></span>
+                  <span className="text-slate-500 text-sm">
+                    ({calculations.baseCosts > 0 ? ((calculations.nebenkosten / calculations.baseCosts) * 100).toFixed(1) : 0}% der Baukosten)
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-slate-500">Details {showNebenkostenDetail ? 'ausblenden' : 'anzeigen'}</span>
+                  {showNebenkostenDetail ? <ChevronUp size={16} className="text-slate-400" /> : <ChevronDown size={16} className="text-slate-400" />}
+                </div>
+              </button>
+
+              {showNebenkostenDetail && (
+                <div className="p-4 bg-slate-900/50 border-t border-slate-700">
+                  <div className="space-y-3">
+                    {nebenkostenItems.map(item => (
+                      <div key={item.id} className="flex items-center justify-between p-3 bg-slate-800/50 rounded-lg hover:bg-slate-800 transition-colors">
+                        <div className="flex-1">
+                          <p className="text-white font-medium text-sm">{item.name}</p>
+                          {item.description && (
+                            <p className="text-slate-500 text-xs mt-1">{item.description}</p>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Input
+                            type="number"
+                            value={item.amount}
+                            onChange={(e) => updateNebenkostenItem(item.id, Number(e.target.value))}
+                            className="w-32 text-right"
+                            placeholder="0"
+                          />
+                          <span className="text-slate-400 text-sm">€</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-4 p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg">
+                    <div className="flex items-center justify-between">
+                      <span className="text-amber-300 font-semibold">Summe Nebenkosten</span>
+                      <span className="text-amber-400 font-bold text-lg">
+                        <Money value={calculations.nebenkosten} privacy={privacy} fractionDigits={0} />
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="flex items-center justify-between p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-lg">
@@ -3986,13 +4047,13 @@ const BusinessPlanCalculator: React.FC<{ privacy: boolean }> = ({ privacy }) => 
               </div>
             </div>
 
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mt-4">
               <div className="p-4 bg-slate-800 rounded-lg">
                 <p className="text-slate-400 text-sm">Baukosten (Basis)</p>
                 <p className="text-2xl font-bold text-white"><Money value={calculations.baseCosts} privacy={privacy} fractionDigits={0} /></p>
               </div>
               <div className="p-4 bg-slate-800 rounded-lg">
-                <p className="text-slate-400 text-sm">+ Nebenkosten ({nebenkostenPercent}%)</p>
+                <p className="text-slate-400 text-sm">+ Nebenkosten</p>
                 <p className="text-2xl font-bold text-amber-400"><Money value={calculations.nebenkosten} privacy={privacy} fractionDigits={0} /></p>
               </div>
               {calculations.baukostenzuschuss > 0 && (
@@ -4001,7 +4062,7 @@ const BusinessPlanCalculator: React.FC<{ privacy: boolean }> = ({ privacy }) => 
                   <p className="text-2xl font-bold text-emerald-400">-<Money value={calculations.baukostenzuschuss} privacy={privacy} fractionDigits={0} /></p>
                 </div>
               )}
-              <div className={`p-4 rounded-lg ${calculations.baukostenzuschuss > 0 ? 'bg-emerald-500/10 border border-emerald-500/30' : 'bg-amber-500/10 border border-amber-500/30'}`}>
+              <div className={`p-4 rounded-lg ${calculations.baukostenzuschuss > 0 ? 'bg-emerald-500/10 border border-emerald-500/30' : 'bg-amber-500/10 border border-amber-500/30'} ${calculations.baukostenzuschuss > 0 ? 'md:col-span-3' : 'md:col-span-1'}`}>
                 <p className={`text-sm ${calculations.baukostenzuschuss > 0 ? 'text-emerald-300' : 'text-amber-300'}`}>
                   {calculations.baukostenzuschuss > 0 ? 'Netto-Gesamtkosten' : 'Gesamtkosten'}
                 </p>
