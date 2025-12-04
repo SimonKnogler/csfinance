@@ -24,16 +24,21 @@ import {
   TrendingDown,
   BarChart3,
   Shield,
-  Percent
+  Percent,
+  FileText,
+  Clock,
+  CheckCircle2,
+  Users
 } from 'lucide-react';
 
 enum SubView {
   OVERVIEW = 'Übersicht',
-  SIMULATOR = 'Simulator',
-  BAUKOSTEN = 'Baukosten',
+  BUSINESSPLAN = 'Businessplan',
   KAUFANALYSE = 'Kaufanalyse',
   RISIKO = 'Risiko',
   STEUER_EUR = 'Steuer EÜR',
+  SIMULATOR = 'Simulator',
+  BAUKOSTEN = 'Baukosten',
 }
 import { 
   ResponsiveContainer, 
@@ -206,6 +211,14 @@ export const RealEstate: React.FC<RealEstateProps> = ({ privacy }) => {
               <LayoutGrid size={16} /> Übersicht
             </button>
             <button
+              onClick={() => setSubView(SubView.BUSINESSPLAN)}
+              className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                subView === SubView.BUSINESSPLAN ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <FileText size={16} /> Businessplan
+            </button>
+            <button
               onClick={() => setSubView(SubView.KAUFANALYSE)}
               className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
                 subView === SubView.KAUFANALYSE ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:text-white'
@@ -362,6 +375,11 @@ export const RealEstate: React.FC<RealEstateProps> = ({ privacy }) => {
       {/* RISIKO VIEW */}
       {subView === SubView.RISIKO && (
         <RiskAnalyzer properties={properties} privacy={privacy} />
+      )}
+
+      {/* BUSINESSPLAN VIEW */}
+      {subView === SubView.BUSINESSPLAN && (
+        <BusinessPlanCalculator privacy={privacy} />
       )}
 
       {/* STEUER EÜR VIEW */}
@@ -3599,6 +3617,801 @@ const TaxEURCalculator: React.FC<{
           <li>• <strong>Negative Einkünfte:</strong> Können mit anderen Einkünften verrechnet werden und mindern die Gesamtsteuerlast</li>
           <li>• <strong>Nebenkosten:</strong> Werden in der Regel 1:1 auf Mieter umgelegt und sind daher steuerneutral</li>
           <li>• Diese Berechnung ersetzt keine Steuerberatung. Bitte konsultieren Sie einen Steuerberater für Ihre individuelle Situation.</li>
+        </ul>
+      </Card>
+    </div>
+  );
+};
+
+// ===================== BUSINESS PLAN CALCULATOR =====================
+
+interface CostCategory {
+  id: string;
+  name: string;
+  amount: number;
+  description?: string;
+}
+
+interface UnitConfig {
+  id: string;
+  name: string;
+  size: number; // m²
+  monthlyRent: number;
+  marketValue: number;
+  isOwned: boolean; // true = Investor, false = Grundstücksbesitzer
+}
+
+interface TimelinePhase {
+  id: string;
+  name: string;
+  startMonth: number;
+  endMonth: number;
+  color: string;
+  icon: React.ReactNode;
+}
+
+const DEFAULT_COSTS: CostCategory[] = [
+  { id: 'rueckbau', name: 'Rückbau & Abriss', amount: 35000, description: 'Altes Gebäude entfernen, Loch ausheben' },
+  { id: 'keller', name: 'Keller', amount: 155000, description: 'Untergeschoss inkl. Abdichtung' },
+  { id: 'garten', name: 'Garten & Stellplätze', amount: 30000, description: 'Außenanlagen, Parkplätze' },
+  { id: 'rohbau', name: 'Rohbau', amount: 450000, description: 'Mauerwerk, Dach, Fenster, Türen' },
+  { id: 'heizung', name: 'Heizung & Sanitär', amount: 75000, description: '~15.000€ pro Wohnung' },
+  { id: 'elektrik', name: 'Elektrik', amount: 10000, description: 'Material (Eigenleistung)' },
+  { id: 'innenausbau', name: 'Innenausbau', amount: 50000, description: 'Rigips, Estrich, Malerarbeiten' },
+  { id: 'fliesen', name: 'Fliesenleger', amount: 30000, description: 'Bäder, Küchen, Flure' },
+  { id: 'kuechen', name: 'Küchen', amount: 30000, description: '~6.000€ pro Küche' },
+];
+
+const DEFAULT_UNITS: UnitConfig[] = [
+  { id: '1', name: 'Wohnung 1', size: 80, monthlyRent: 1500, marketValue: 500000, isOwned: true },
+  { id: '2', name: 'Wohnung 2', size: 80, monthlyRent: 1500, marketValue: 500000, isOwned: true },
+  { id: '3', name: 'Wohnung 3 (Penthouse)', size: 120, monthlyRent: 2500, marketValue: 1000000, isOwned: true },
+  { id: '4', name: 'Wohnung 4', size: 70, monthlyRent: 1200, marketValue: 400000, isOwned: false },
+  { id: '5', name: 'Wohnung 5', size: 70, monthlyRent: 1200, marketValue: 400000, isOwned: false },
+];
+
+const BusinessPlanCalculator: React.FC<{ privacy: boolean }> = ({ privacy }) => {
+  // State for collapsible sections
+  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
+    costs: true,
+    units: true,
+    financing: true,
+    economics: true,
+    timeline: false,
+    risk: false,
+  });
+
+  // Costs state
+  const [costs, setCosts] = useState<CostCategory[]>(DEFAULT_COSTS);
+  const [nebenkostenPercent, setNebenkostenPercent] = useState(12); // 10-15%
+
+  // Units state
+  const [units, setUnits] = useState<UnitConfig[]>(DEFAULT_UNITS);
+
+  // Financing state
+  const [eigenkapital, setEigenkapital] = useState(100000);
+  const [zinssatz, setZinssatz] = useState(3.6);
+  const [tilgung, setTilgung] = useState(2.0);
+  const [zinsbindung, setZinsbindung] = useState(15);
+
+  // Risk analysis state
+  const [costOverrun, setCostOverrun] = useState(0); // % over budget
+  const [vacancyMonths, setVacancyMonths] = useState(0); // months/year
+  const [futureInterestIncrease, setFutureInterestIncrease] = useState(0); // % increase after Zinsbindung
+
+  // Operating expenses
+  const [bewirtschaftungskostenPercent, setBewirtschaftungskostenPercent] = useState(25);
+
+  // Toggle section
+  const toggleSection = (id: string) => {
+    setExpandedSections(prev => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  // Update cost
+  const updateCost = (id: string, amount: number) => {
+    setCosts(prev => prev.map(c => c.id === id ? { ...c, amount } : c));
+  };
+
+  // Update unit
+  const updateUnit = (id: string, field: keyof UnitConfig, value: number | boolean | string) => {
+    setUnits(prev => prev.map(u => u.id === id ? { ...u, [field]: value } : u));
+  };
+
+  // Add new unit
+  const addUnit = () => {
+    const newId = (units.length + 1).toString();
+    setUnits([...units, {
+      id: newId,
+      name: `Wohnung ${newId}`,
+      size: 70,
+      monthlyRent: 1200,
+      marketValue: 400000,
+      isOwned: false,
+    }]);
+  };
+
+  // Remove unit
+  const removeUnit = (id: string) => {
+    setUnits(prev => prev.filter(u => u.id !== id));
+  };
+
+  // Calculations
+  const calculations = useMemo(() => {
+    // Total costs
+    const baseCosts = costs.reduce((sum, c) => sum + c.amount, 0);
+    const nebenkosten = baseCosts * (nebenkostenPercent / 100);
+    const totalCostsBase = baseCosts + nebenkosten;
+    const totalCostsWithOverrun = totalCostsBase * (1 + costOverrun / 100);
+
+    // Units analysis
+    const ownedUnits = units.filter(u => u.isOwned);
+    const otherUnits = units.filter(u => !u.isOwned);
+    const totalMonthlyRent = ownedUnits.reduce((sum, u) => sum + u.monthlyRent, 0);
+    const totalMarketValue = ownedUnits.reduce((sum, u) => sum + u.marketValue, 0);
+    const totalSize = ownedUnits.reduce((sum, u) => sum + u.size, 0);
+
+    // Financing
+    const kreditbetrag = Math.max(0, totalCostsWithOverrun - eigenkapital);
+    const annualRate = (zinssatz + tilgung) / 100;
+    const monthlyRate = kreditbetrag * annualRate / 12;
+    const yearlyRate = monthlyRate * 12;
+
+    // After Zinsbindung
+    const futureZinssatz = zinssatz + futureInterestIncrease;
+    const futureAnnualRate = (futureZinssatz + tilgung) / 100;
+    
+    // Approximate remaining debt after Zinsbindung
+    let remainingDebt = kreditbetrag;
+    for (let i = 0; i < zinsbindung; i++) {
+      const yearlyInterest = remainingDebt * (zinssatz / 100);
+      const yearlyPrincipal = yearlyRate - yearlyInterest;
+      remainingDebt = Math.max(0, remainingDebt - yearlyPrincipal);
+    }
+    const futureMonthlyRate = remainingDebt * futureAnnualRate / 12;
+
+    // Years to payoff
+    let debt = kreditbetrag;
+    let years = 0;
+    while (debt > 0 && years < 50) {
+      const interest = debt * (zinssatz / 100);
+      const principal = yearlyRate - interest;
+      debt = Math.max(0, debt - principal);
+      years++;
+    }
+
+    // Economic calculations
+    const yearlyRentGross = totalMonthlyRent * 12;
+    const effectiveYearlyRent = totalMonthlyRent * (12 - vacancyMonths);
+    const bewirtschaftungskosten = effectiveYearlyRent * (bewirtschaftungskostenPercent / 100);
+    const noi = effectiveYearlyRent - bewirtschaftungskosten;
+    const dscr = yearlyRate > 0 ? noi / yearlyRate : 0;
+    const cashflowBeforeTax = noi - yearlyRate;
+    const monthlyCashflow = cashflowBeforeTax / 12;
+
+    // ROI on equity
+    const roiEquity = eigenkapital > 0 ? (cashflowBeforeTax / eigenkapital) * 100 : 0;
+
+    // Mietrendite
+    const bruttomietrendite = totalMarketValue > 0 ? (yearlyRentGross / totalMarketValue) * 100 : 0;
+    const nettomietrendite = totalMarketValue > 0 ? (noi / totalMarketValue) * 100 : 0;
+
+    return {
+      // Costs
+      baseCosts,
+      nebenkosten,
+      totalCostsBase,
+      totalCostsWithOverrun,
+      // Units
+      ownedUnits,
+      otherUnits,
+      totalMonthlyRent,
+      totalMarketValue,
+      totalSize,
+      // Financing
+      kreditbetrag,
+      monthlyRate,
+      yearlyRate,
+      remainingDebt,
+      futureMonthlyRate,
+      yearsToPayoff: years,
+      // Economics
+      yearlyRentGross,
+      effectiveYearlyRent,
+      bewirtschaftungskosten,
+      noi,
+      dscr,
+      cashflowBeforeTax,
+      monthlyCashflow,
+      roiEquity,
+      bruttomietrendite,
+      nettomietrendite,
+    };
+  }, [costs, nebenkostenPercent, costOverrun, units, eigenkapital, zinssatz, tilgung, zinsbindung, vacancyMonths, futureInterestIncrease, bewirtschaftungskostenPercent]);
+
+  // Timeline phases
+  const timelinePhases: TimelinePhase[] = [
+    { id: 'planung', name: 'Planung & Genehmigung', startMonth: -6, endMonth: -1, color: 'bg-blue-500', icon: <FileText size={14} /> },
+    { id: 'finanzierung', name: 'Finanzierung', startMonth: -3, endMonth: 0, color: 'bg-purple-500', icon: <PiggyBank size={14} /> },
+    { id: 'bau', name: 'Bauphase', startMonth: 0, endMonth: 9, color: 'bg-amber-500', icon: <HardHat size={14} /> },
+    { id: 'vermarktung', name: 'Vermarktung', startMonth: 5, endMonth: 10, color: 'bg-emerald-500', icon: <Users size={14} /> },
+    { id: 'uebergabe', name: 'Fertigstellung & Übergabe', startMonth: 9, endMonth: 11, color: 'bg-teal-500', icon: <Home size={14} /> },
+    { id: 'vollvermietung', name: 'Vollvermietung', startMonth: 10, endMonth: 12, color: 'bg-green-500', icon: <CheckCircle2 size={14} /> },
+  ];
+
+  // Section Header Component
+  const SectionHeader: React.FC<{ id: string; title: string; icon: React.ReactNode; color: string }> = ({ id, title, icon, color }) => (
+    <div
+      className={`flex items-center justify-between p-4 cursor-pointer hover:bg-slate-800/50 rounded-lg transition-colors`}
+      onClick={() => toggleSection(id)}
+    >
+      <div className="flex items-center gap-3">
+        <div className={`w-8 h-8 rounded-lg ${color} flex items-center justify-center`}>
+          {icon}
+        </div>
+        <h3 className="text-lg font-bold text-white">{title}</h3>
+      </div>
+      {expandedSections[id] ? <ChevronUp size={20} className="text-slate-400" /> : <ChevronDown size={20} className="text-slate-400" />}
+    </div>
+  );
+
+  // DSCR color helper
+  const getDSCRColor = (dscr: number) => {
+    if (dscr >= 1.2) return 'text-emerald-400';
+    if (dscr >= 1.0) return 'text-amber-400';
+    return 'text-red-400';
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center gap-4 mb-6">
+        <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
+          <FileText size={24} className="text-white" />
+        </div>
+        <div>
+          <h2 className="text-xl font-bold text-white">Businessplan Mehrfamilienhaus</h2>
+          <p className="text-slate-400 text-sm">Interaktive Kalkulation für Ihr Bauprojekt</p>
+        </div>
+      </div>
+
+      {/* Executive Summary */}
+      <Card className="bg-gradient-to-r from-indigo-900/30 to-purple-900/30 border-indigo-500/30">
+        <h3 className="text-lg font-bold text-white mb-4">Executive Summary</h3>
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+          <div className="text-center">
+            <p className="text-slate-400 text-xs uppercase mb-1">Baukosten</p>
+            <p className="text-xl font-bold text-white"><Money value={calculations.totalCostsWithOverrun} privacy={privacy} fractionDigits={0} /></p>
+          </div>
+          <div className="text-center">
+            <p className="text-slate-400 text-xs uppercase mb-1">Marktwert (Eigentum)</p>
+            <p className="text-xl font-bold text-emerald-400"><Money value={calculations.totalMarketValue} privacy={privacy} fractionDigits={0} /></p>
+          </div>
+          <div className="text-center">
+            <p className="text-slate-400 text-xs uppercase mb-1">Mieteinnahmen/Jahr</p>
+            <p className="text-xl font-bold text-blue-400"><Money value={calculations.yearlyRentGross} privacy={privacy} fractionDigits={0} /></p>
+          </div>
+          <div className="text-center">
+            <p className="text-slate-400 text-xs uppercase mb-1">DSCR</p>
+            <p className={`text-xl font-bold ${getDSCRColor(calculations.dscr)}`}>{calculations.dscr.toFixed(2)}</p>
+          </div>
+          <div className="text-center">
+            <p className="text-slate-400 text-xs uppercase mb-1">Cashflow/Monat</p>
+            <p className={`text-xl font-bold ${calculations.monthlyCashflow >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+              <Money value={calculations.monthlyCashflow} privacy={privacy} fractionDigits={0} sign />
+            </p>
+          </div>
+          <div className="text-center">
+            <p className="text-slate-400 text-xs uppercase mb-1">Tilgung in</p>
+            <p className="text-xl font-bold text-white">{calculations.yearsToPayoff} Jahren</p>
+          </div>
+        </div>
+      </Card>
+
+      {/* 1. Kostenaufstellung */}
+      <Card>
+        <SectionHeader id="costs" title="Kostenaufstellung" icon={<Calculator size={16} className="text-white" />} color="bg-amber-500" />
+        {expandedSections.costs && (
+          <div className="mt-4 space-y-4">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left">
+                <thead>
+                  <tr className="text-slate-400 text-sm border-b border-slate-700">
+                    <th className="py-2 px-2">Position</th>
+                    <th className="py-2 px-2">Beschreibung</th>
+                    <th className="py-2 px-2 text-right">Betrag (€)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {costs.map(cost => (
+                    <tr key={cost.id} className="border-b border-slate-800">
+                      <td className="py-3 px-2 text-white font-medium">{cost.name}</td>
+                      <td className="py-3 px-2 text-slate-400 text-sm">{cost.description}</td>
+                      <td className="py-3 px-2 text-right">
+                        <Input
+                          type="number"
+                          value={cost.amount}
+                          onChange={(e) => updateCost(cost.id, Number(e.target.value))}
+                          className="w-32 text-right"
+                        />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="flex items-center justify-between p-4 bg-slate-800/50 rounded-lg">
+              <div className="flex items-center gap-4">
+                <span className="text-slate-400">Nebenkosten:</span>
+                <input
+                  type="range"
+                  min="8"
+                  max="18"
+                  step="1"
+                  value={nebenkostenPercent}
+                  onChange={(e) => setNebenkostenPercent(Number(e.target.value))}
+                  className="w-32 accent-amber-500"
+                />
+                <span className="text-amber-400 font-medium">{nebenkostenPercent}%</span>
+              </div>
+              <div className="text-right">
+                <span className="text-slate-400 text-sm">= </span>
+                <span className="text-amber-400 font-bold"><Money value={calculations.nebenkosten} privacy={privacy} fractionDigits={0} /></span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4 mt-4">
+              <div className="p-4 bg-slate-800 rounded-lg">
+                <p className="text-slate-400 text-sm">Baukosten (Basis)</p>
+                <p className="text-2xl font-bold text-white"><Money value={calculations.baseCosts} privacy={privacy} fractionDigits={0} /></p>
+              </div>
+              <div className="p-4 bg-amber-500/10 border border-amber-500/30 rounded-lg">
+                <p className="text-amber-300 text-sm">Gesamtkosten inkl. Nebenkosten</p>
+                <p className="text-2xl font-bold text-amber-400"><Money value={calculations.totalCostsBase} privacy={privacy} fractionDigits={0} /></p>
+              </div>
+            </div>
+          </div>
+        )}
+      </Card>
+
+      {/* 2. Wohneinheiten */}
+      <Card>
+        <SectionHeader id="units" title="Wohneinheiten" icon={<Home size={16} className="text-white" />} color="bg-blue-500" />
+        {expandedSections.units && (
+          <div className="mt-4 space-y-4">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left">
+                <thead>
+                  <tr className="text-slate-400 text-sm border-b border-slate-700">
+                    <th className="py-2 px-2">Einheit</th>
+                    <th className="py-2 px-2 text-center">m²</th>
+                    <th className="py-2 px-2 text-center">Miete/Mo (€)</th>
+                    <th className="py-2 px-2 text-center">Marktwert (€)</th>
+                    <th className="py-2 px-2 text-center">Eigentum</th>
+                    <th className="py-2 px-2 text-center">Aktion</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {units.map(unit => (
+                    <tr key={unit.id} className={`border-b border-slate-800 ${unit.isOwned ? 'bg-emerald-500/5' : ''}`}>
+                      <td className="py-3 px-2">
+                        <Input
+                          type="text"
+                          value={unit.name}
+                          onChange={(e) => updateUnit(unit.id, 'name', e.target.value)}
+                          className="w-40"
+                        />
+                      </td>
+                      <td className="py-3 px-2 text-center">
+                        <Input
+                          type="number"
+                          value={unit.size}
+                          onChange={(e) => updateUnit(unit.id, 'size', Number(e.target.value))}
+                          className="w-20 text-center"
+                        />
+                      </td>
+                      <td className="py-3 px-2 text-center">
+                        <Input
+                          type="number"
+                          value={unit.monthlyRent}
+                          onChange={(e) => updateUnit(unit.id, 'monthlyRent', Number(e.target.value))}
+                          className="w-24 text-center"
+                        />
+                      </td>
+                      <td className="py-3 px-2 text-center">
+                        <Input
+                          type="number"
+                          value={unit.marketValue}
+                          onChange={(e) => updateUnit(unit.id, 'marketValue', Number(e.target.value))}
+                          className="w-28 text-center"
+                        />
+                      </td>
+                      <td className="py-3 px-2 text-center">
+                        <input
+                          type="checkbox"
+                          checked={unit.isOwned}
+                          onChange={(e) => updateUnit(unit.id, 'isOwned', e.target.checked)}
+                          className="w-5 h-5 rounded border-slate-600 bg-slate-800 text-emerald-500"
+                        />
+                      </td>
+                      <td className="py-3 px-2 text-center">
+                        <button
+                          onClick={() => removeUnit(unit.id)}
+                          className="p-2 text-slate-400 hover:text-red-400 transition-colors"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <Button variant="ghost" onClick={addUnit} className="w-full">
+              <Plus size={16} /> Wohnung hinzufügen
+            </Button>
+
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
+              <div className="p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-lg">
+                <p className="text-emerald-300 text-sm">Im Eigentum ({calculations.ownedUnits.length})</p>
+                <p className="text-xl font-bold text-emerald-400">{calculations.totalSize} m²</p>
+              </div>
+              <div className="p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-lg">
+                <p className="text-emerald-300 text-sm">Mieteinnahmen/Mo</p>
+                <p className="text-xl font-bold text-emerald-400"><Money value={calculations.totalMonthlyRent} privacy={privacy} fractionDigits={0} /></p>
+              </div>
+              <div className="p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-lg">
+                <p className="text-emerald-300 text-sm">Marktwert gesamt</p>
+                <p className="text-xl font-bold text-emerald-400"><Money value={calculations.totalMarketValue} privacy={privacy} fractionDigits={0} /></p>
+              </div>
+              <div className="p-4 bg-slate-800 rounded-lg">
+                <p className="text-slate-400 text-sm">Andere Eigentümer ({calculations.otherUnits.length})</p>
+                <p className="text-xl font-bold text-slate-400">{calculations.otherUnits.reduce((s, u) => s + u.size, 0)} m²</p>
+              </div>
+            </div>
+          </div>
+        )}
+      </Card>
+
+      {/* 3. Finanzierung */}
+      <Card>
+        <SectionHeader id="financing" title="Finanzierung" icon={<PiggyBank size={16} className="text-white" />} color="bg-purple-500" />
+        {expandedSections.financing && (
+          <div className="mt-4 space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div>
+                <label className="block text-sm text-slate-400 mb-1">Eigenkapital (€)</label>
+                <Input
+                  type="number"
+                  value={eigenkapital}
+                  onChange={(e) => setEigenkapital(Number(e.target.value))}
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-slate-400 mb-1">Zinssatz (%)</label>
+                <Input
+                  type="number"
+                  step="0.1"
+                  value={zinssatz}
+                  onChange={(e) => setZinssatz(Number(e.target.value))}
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-slate-400 mb-1">Tilgung (%)</label>
+                <Input
+                  type="number"
+                  step="0.1"
+                  value={tilgung}
+                  onChange={(e) => setTilgung(Number(e.target.value))}
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-slate-400 mb-1">Zinsbindung (Jahre)</label>
+                <Input
+                  type="number"
+                  value={zinsbindung}
+                  onChange={(e) => setZinsbindung(Number(e.target.value))}
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="p-4 bg-slate-800 rounded-lg">
+                <p className="text-slate-400 text-sm">Kreditbetrag</p>
+                <p className="text-xl font-bold text-amber-400"><Money value={calculations.kreditbetrag} privacy={privacy} fractionDigits={0} /></p>
+              </div>
+              <div className="p-4 bg-slate-800 rounded-lg">
+                <p className="text-slate-400 text-sm">Monatliche Rate</p>
+                <p className="text-xl font-bold text-white"><Money value={calculations.monthlyRate} privacy={privacy} fractionDigits={0} /></p>
+              </div>
+              <div className="p-4 bg-slate-800 rounded-lg">
+                <p className="text-slate-400 text-sm">Jährliche Belastung</p>
+                <p className="text-xl font-bold text-white"><Money value={calculations.yearlyRate} privacy={privacy} fractionDigits={0} /></p>
+              </div>
+              <div className="p-4 bg-slate-800 rounded-lg">
+                <p className="text-slate-400 text-sm">Restschuld nach {zinsbindung}J</p>
+                <p className="text-xl font-bold text-amber-400"><Money value={calculations.remainingDebt} privacy={privacy} fractionDigits={0} /></p>
+              </div>
+            </div>
+          </div>
+        )}
+      </Card>
+
+      {/* 4. Wirtschaftlichkeit */}
+      <Card>
+        <SectionHeader id="economics" title="Wirtschaftlichkeit" icon={<TrendingUp size={16} className="text-white" />} color="bg-emerald-500" />
+        {expandedSections.economics && (
+          <div className="mt-4 space-y-6">
+            <div className="flex items-center gap-4 p-4 bg-slate-800/50 rounded-lg">
+              <span className="text-slate-400">Bewirtschaftungskosten:</span>
+              <input
+                type="range"
+                min="15"
+                max="35"
+                step="1"
+                value={bewirtschaftungskostenPercent}
+                onChange={(e) => setBewirtschaftungskostenPercent(Number(e.target.value))}
+                className="flex-1 accent-emerald-500"
+              />
+              <span className="text-emerald-400 font-medium w-16 text-right">{bewirtschaftungskostenPercent}%</span>
+            </div>
+
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+              <div className="p-4 bg-slate-800 rounded-lg text-center">
+                <p className="text-slate-400 text-xs uppercase mb-1">Jahresmiete (brutto)</p>
+                <p className="text-xl font-bold text-white"><Money value={calculations.yearlyRentGross} privacy={privacy} fractionDigits={0} /></p>
+              </div>
+              <div className="p-4 bg-slate-800 rounded-lg text-center">
+                <p className="text-slate-400 text-xs uppercase mb-1">- Bewirtschaftung</p>
+                <p className="text-xl font-bold text-red-400"><Money value={calculations.bewirtschaftungskosten} privacy={privacy} fractionDigits={0} /></p>
+              </div>
+              <div className="p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-lg text-center">
+                <p className="text-emerald-300 text-xs uppercase mb-1">= NOI</p>
+                <p className="text-xl font-bold text-emerald-400"><Money value={calculations.noi} privacy={privacy} fractionDigits={0} /></p>
+              </div>
+              <div className="p-4 bg-slate-800 rounded-lg text-center">
+                <p className="text-slate-400 text-xs uppercase mb-1">- Kapitaldienst</p>
+                <p className="text-xl font-bold text-red-400"><Money value={calculations.yearlyRate} privacy={privacy} fractionDigits={0} /></p>
+              </div>
+              <div className={`p-4 rounded-lg text-center ${calculations.cashflowBeforeTax >= 0 ? 'bg-emerald-500/10 border border-emerald-500/30' : 'bg-red-500/10 border border-red-500/30'}`}>
+                <p className={`text-xs uppercase mb-1 ${calculations.cashflowBeforeTax >= 0 ? 'text-emerald-300' : 'text-red-300'}`}>= Cashflow</p>
+                <p className={`text-xl font-bold ${calculations.cashflowBeforeTax >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                  <Money value={calculations.cashflowBeforeTax} privacy={privacy} fractionDigits={0} sign />
+                </p>
+              </div>
+              <div className={`p-4 rounded-lg text-center ${calculations.dscr >= 1 ? 'bg-emerald-500/10 border border-emerald-500/30' : 'bg-red-500/10 border border-red-500/30'}`}>
+                <p className="text-slate-400 text-xs uppercase mb-1">DSCR</p>
+                <p className={`text-xl font-bold ${getDSCRColor(calculations.dscr)}`}>{calculations.dscr.toFixed(2)}</p>
+                <p className="text-xs text-slate-500">{calculations.dscr >= 1.2 ? 'Sehr gut' : calculations.dscr >= 1 ? 'OK' : 'Kritisch'}</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="p-4 bg-slate-800 rounded-lg text-center">
+                <p className="text-slate-400 text-xs uppercase mb-1">Bruttomietrendite</p>
+                <p className={`text-xl font-bold ${calculations.bruttomietrendite >= 5 ? 'text-emerald-400' : 'text-amber-400'}`}>
+                  {calculations.bruttomietrendite.toFixed(2)}%
+                </p>
+              </div>
+              <div className="p-4 bg-slate-800 rounded-lg text-center">
+                <p className="text-slate-400 text-xs uppercase mb-1">Nettomietrendite</p>
+                <p className={`text-xl font-bold ${calculations.nettomietrendite >= 3 ? 'text-emerald-400' : 'text-amber-400'}`}>
+                  {calculations.nettomietrendite.toFixed(2)}%
+                </p>
+              </div>
+              <div className="p-4 bg-slate-800 rounded-lg text-center">
+                <p className="text-slate-400 text-xs uppercase mb-1">ROI auf Eigenkapital</p>
+                <p className={`text-xl font-bold ${calculations.roiEquity >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                  {calculations.roiEquity.toFixed(1)}%
+                </p>
+              </div>
+              <div className="p-4 bg-slate-800 rounded-lg text-center">
+                <p className="text-slate-400 text-xs uppercase mb-1">Cashflow/Monat</p>
+                <p className={`text-xl font-bold ${calculations.monthlyCashflow >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                  <Money value={calculations.monthlyCashflow} privacy={privacy} fractionDigits={0} sign />
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+      </Card>
+
+      {/* 5. Zeitplan */}
+      <Card>
+        <SectionHeader id="timeline" title="Zeitplan" icon={<Clock size={16} className="text-white" />} color="bg-teal-500" />
+        {expandedSections.timeline && (
+          <div className="mt-4 space-y-4">
+            <div className="relative">
+              {/* Timeline track */}
+              <div className="absolute left-0 right-0 h-2 bg-slate-700 rounded-full top-1/2 -translate-y-1/2"></div>
+              
+              {/* Months labels */}
+              <div className="flex justify-between text-xs text-slate-400 mb-8 px-2">
+                {[-6, -3, 0, 3, 6, 9, 12].map(m => (
+                  <span key={m}>{m >= 0 ? `M${m}` : `M${m}`}</span>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              {timelinePhases.map(phase => {
+                const totalMonths = 18; // -6 to 12
+                const startPercent = ((phase.startMonth + 6) / totalMonths) * 100;
+                const widthPercent = ((phase.endMonth - phase.startMonth) / totalMonths) * 100;
+
+                return (
+                  <div key={phase.id} className="flex items-center gap-4">
+                    <div className="w-40 flex items-center gap-2 text-sm text-white">
+                      <div className={`w-6 h-6 rounded ${phase.color} flex items-center justify-center`}>
+                        {phase.icon}
+                      </div>
+                      <span className="truncate">{phase.name}</span>
+                    </div>
+                    <div className="flex-1 h-6 bg-slate-800 rounded-full relative overflow-hidden">
+                      <div
+                        className={`absolute h-full ${phase.color} rounded-full`}
+                        style={{ left: `${startPercent}%`, width: `${widthPercent}%` }}
+                      />
+                    </div>
+                    <div className="w-24 text-xs text-slate-400 text-right">
+                      M{phase.startMonth} → M{phase.endMonth}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="mt-6 p-4 bg-slate-800/50 rounded-lg">
+              <h4 className="text-sm font-semibold text-white mb-2">Meilensteine</h4>
+              <ul className="text-sm text-slate-400 space-y-1">
+                <li>• <strong>Monat -6 bis -3:</strong> Planung, Genehmigungen, Bankgespräche</li>
+                <li>• <strong>Monat 0:</strong> Baustart, erster Kreditabruf</li>
+                <li>• <strong>Monat 5-6:</strong> Start Vermarktung (Exposés, Portale)</li>
+                <li>• <strong>Monat 9:</strong> Fertigstellung & Abnahme</li>
+                <li>• <strong>Monat 10-12:</strong> Einzug Mieter, Vollvermietung</li>
+                <li>• <strong>Ab Monat 12:</strong> Voller Kapitaldienst aus Mieteinnahmen</li>
+              </ul>
+            </div>
+          </div>
+        )}
+      </Card>
+
+      {/* 6. Risikoanalyse */}
+      <Card>
+        <SectionHeader id="risk" title="Risikoanalyse" icon={<AlertTriangle size={16} className="text-white" />} color="bg-red-500" />
+        {expandedSections.risk && (
+          <div className="mt-4 space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {/* Cost overrun */}
+              <div className="space-y-2">
+                <div className="flex justify-between">
+                  <label className="text-sm text-slate-400">Kostensteigerung</label>
+                  <span className={`font-medium ${costOverrun > 0 ? 'text-red-400' : 'text-emerald-400'}`}>
+                    +{costOverrun}%
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="30"
+                  step="5"
+                  value={costOverrun}
+                  onChange={(e) => setCostOverrun(Number(e.target.value))}
+                  className="w-full accent-red-500"
+                />
+                <p className="text-xs text-slate-500">
+                  Neue Gesamtkosten: <Money value={calculations.totalCostsWithOverrun} privacy={privacy} fractionDigits={0} />
+                </p>
+              </div>
+
+              {/* Vacancy */}
+              <div className="space-y-2">
+                <div className="flex justify-between">
+                  <label className="text-sm text-slate-400">Leerstand/Jahr</label>
+                  <span className={`font-medium ${vacancyMonths > 0 ? 'text-amber-400' : 'text-emerald-400'}`}>
+                    {vacancyMonths} Monate
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="6"
+                  step="1"
+                  value={vacancyMonths}
+                  onChange={(e) => setVacancyMonths(Number(e.target.value))}
+                  className="w-full accent-amber-500"
+                />
+                <p className="text-xs text-slate-500">
+                  Effektive Miete: <Money value={calculations.effectiveYearlyRent} privacy={privacy} fractionDigits={0} />/Jahr
+                </p>
+              </div>
+
+              {/* Future interest */}
+              <div className="space-y-2">
+                <div className="flex justify-between">
+                  <label className="text-sm text-slate-400">Zinsanstieg nach {zinsbindung}J</label>
+                  <span className={`font-medium ${futureInterestIncrease > 0 ? 'text-red-400' : 'text-emerald-400'}`}>
+                    +{futureInterestIncrease}%
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="5"
+                  step="0.5"
+                  value={futureInterestIncrease}
+                  onChange={(e) => setFutureInterestIncrease(Number(e.target.value))}
+                  className="w-full accent-red-500"
+                />
+                <p className="text-xs text-slate-500">
+                  Neue Rate: <Money value={calculations.futureMonthlyRate} privacy={privacy} fractionDigits={0} />/Mo
+                </p>
+              </div>
+            </div>
+
+            {/* Risk Impact Summary */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className={`p-4 rounded-lg text-center ${calculations.dscr >= 1.2 ? 'bg-emerald-500/10 border border-emerald-500/30' : calculations.dscr >= 1 ? 'bg-amber-500/10 border border-amber-500/30' : 'bg-red-500/10 border border-red-500/30'}`}>
+                <p className="text-slate-400 text-xs uppercase mb-1">DSCR (mit Risiken)</p>
+                <p className={`text-2xl font-bold ${getDSCRColor(calculations.dscr)}`}>{calculations.dscr.toFixed(2)}</p>
+              </div>
+              <div className={`p-4 rounded-lg text-center ${calculations.monthlyCashflow >= 0 ? 'bg-emerald-500/10 border border-emerald-500/30' : 'bg-red-500/10 border border-red-500/30'}`}>
+                <p className="text-slate-400 text-xs uppercase mb-1">Cashflow (mit Risiken)</p>
+                <p className={`text-2xl font-bold ${calculations.monthlyCashflow >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                  <Money value={calculations.monthlyCashflow} privacy={privacy} fractionDigits={0} sign />
+                </p>
+              </div>
+              <div className="p-4 bg-slate-800 rounded-lg text-center">
+                <p className="text-slate-400 text-xs uppercase mb-1">Neuer Kreditbedarf</p>
+                <p className="text-2xl font-bold text-amber-400"><Money value={calculations.kreditbetrag} privacy={privacy} fractionDigits={0} /></p>
+              </div>
+              <div className="p-4 bg-slate-800 rounded-lg text-center">
+                <p className="text-slate-400 text-xs uppercase mb-1">Puffer benötigt</p>
+                <p className="text-2xl font-bold text-white"><Money value={Math.max(0, -calculations.monthlyCashflow * 12)} privacy={privacy} fractionDigits={0} /></p>
+              </div>
+            </div>
+
+            {/* Risk Warnings */}
+            <div className="space-y-2">
+              {calculations.dscr < 1 && (
+                <div className="flex items-center gap-3 p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-red-300 text-sm">
+                  <AlertTriangle size={18} />
+                  <span><strong>DSCR unter 1.0:</strong> Mieteinnahmen decken nicht den Kapitaldienst. Liquiditätspuffer erforderlich!</span>
+                </div>
+              )}
+              {calculations.dscr >= 1 && calculations.dscr < 1.2 && (
+                <div className="flex items-center gap-3 p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg text-amber-300 text-sm">
+                  <AlertTriangle size={18} />
+                  <span><strong>DSCR unter 1.2:</strong> Knapper Puffer. Bank könnte zusätzliche Sicherheiten verlangen.</span>
+                </div>
+              )}
+              {costOverrun > 15 && (
+                <div className="flex items-center gap-3 p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg text-amber-300 text-sm">
+                  <AlertTriangle size={18} />
+                  <span><strong>Kostensteigerung {">"} 15%:</strong> Erhöhter Finanzierungsbedarf. Nachfinanzierung prüfen.</span>
+                </div>
+              )}
+              {calculations.dscr >= 1.2 && costOverrun <= 15 && vacancyMonths <= 2 && (
+                <div className="flex items-center gap-3 p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-lg text-emerald-300 text-sm">
+                  <CheckCircle2 size={18} />
+                  <span><strong>Gute Konstellation:</strong> Projekt erscheint wirtschaftlich tragfähig.</span>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </Card>
+
+      {/* Info Box */}
+      <Card className="bg-slate-800/50 border border-slate-700">
+        <h4 className="text-sm font-semibold text-white mb-2">Hinweise zum Businessplan</h4>
+        <ul className="text-xs text-slate-400 space-y-1">
+          <li>• <strong>DSCR (Debt Service Coverage Ratio):</strong> NOI / Kapitaldienst. {">"} 1.2 gilt als solide, {">"} 1.0 als tragfähig.</li>
+          <li>• <strong>Bewirtschaftungskosten:</strong> Typisch 20-30% der Mieteinnahmen (Verwaltung, Instandhaltung, Rücklagen, Leerstandsrisiko).</li>
+          <li>• <strong>NOI (Net Operating Income):</strong> Mieteinnahmen abzüglich laufender Bewirtschaftungskosten, vor Kapitaldienst.</li>
+          <li>• <strong>Nebenkosten:</strong> 10-15% der Baukosten für Architekt, Statik, Genehmigungen, Notar, Anschlüsse etc.</li>
+          <li>• Dieser Businessplan dient als Planungshilfe. Für Bankgespräche individuell anpassen und durch Fachleute prüfen lassen.</li>
         </ul>
       </Card>
     </div>
