@@ -3625,7 +3625,7 @@ const TaxEURCalculator: React.FC<{
 
 // ===================== BUSINESS PLAN CALCULATOR =====================
 
-interface CostCategory {
+interface BusinessPlanCost {
   id: string;
   name: string;
   amount: number;
@@ -3650,7 +3650,7 @@ interface TimelinePhase {
   icon: React.ReactNode;
 }
 
-const DEFAULT_COSTS: CostCategory[] = [
+const DEFAULT_BP_COSTS: BusinessPlanCost[] = [
   { id: 'rueckbau', name: 'Rückbau & Abriss', amount: 35000, description: 'Altes Gebäude entfernen, Loch ausheben' },
   { id: 'keller', name: 'Keller', amount: 155000, description: 'Untergeschoss inkl. Abdichtung' },
   { id: 'garten', name: 'Garten & Stellplätze', amount: 30000, description: 'Außenanlagen, Parkplätze' },
@@ -3682,7 +3682,7 @@ const BusinessPlanCalculator: React.FC<{ privacy: boolean }> = ({ privacy }) => 
   });
 
   // Costs state
-  const [costs, setCosts] = useState<CostCategory[]>(DEFAULT_COSTS);
+  const [costs, setCosts] = useState<BusinessPlanCost[]>(DEFAULT_BP_COSTS);
   const [nebenkostenPercent, setNebenkostenPercent] = useState(12); // 10-15%
 
   // Units state

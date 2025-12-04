@@ -827,13 +827,13 @@ const NEWS_CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes
 
 // Fallback news if API fails
 const FALLBACK_NEWS: NewsItem[] = [
-  {
+    {
     id: 'fallback-1',
     title: 'Unable to load latest news - please refresh',
     source: 'System',
     time: 'Just now',
     relatedTickers: [],
-    sentiment: 'NEUTRAL',
+      sentiment: 'NEUTRAL',
     url: '#'
   }
 ];

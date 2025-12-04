@@ -40,25 +40,25 @@ export const Documents: React.FC<DocumentsProps> = ({ docs, onAddDoc, onDeleteDo
     if (!fileUrl) {
       setUploadProgress('Lokale Speicherung...');
       base64Data = await new Promise<string>((resolve) => {
-        const reader = new FileReader();
+    const reader = new FileReader();
         reader.onload = (e) => resolve(e.target?.result as string);
         reader.readAsDataURL(file);
       });
     }
-    
-    const newDoc: PortfolioDocument = {
+      
+      const newDoc: PortfolioDocument = {
       id: docId,
-      name: file.name,
-      type: file.type.includes('pdf') ? 'PDF' : 'IMG',
-      date: new Date().toISOString().split('T')[0],
-      size: (file.size / 1024 / 1024).toFixed(2) + ' MB',
+        name: file.name,
+        type: file.type.includes('pdf') ? 'PDF' : 'IMG',
+        date: new Date().toISOString().split('T')[0],
+        size: (file.size / 1024 / 1024).toFixed(2) + ' MB',
       category: 'Other',
       data: base64Data,
       fileUrl: fileUrl || undefined,
       storagePath: fileUrl ? storagePath : undefined,
-    };
+      };
     
-    onAddDoc(newDoc);
+      onAddDoc(newDoc);
     setIsUploading(false);
     setUploadProgress(null);
   };

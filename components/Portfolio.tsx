@@ -172,13 +172,13 @@ export const Portfolio: React.FC<PortfolioProps> = ({ privacy }) => {
           data.forEach(point => {
             // Only include data points from the range start onwards
             if (point.timestamp >= rangeStartTimestamp) {
-              if (!timestampMap.has(point.timestamp)) {
-                timestampMap.set(point.timestamp, {
-                  date: point.date,
-                  pricesBySymbol: new Map(),
-                });
-              }
-              timestampMap.get(point.timestamp)!.pricesBySymbol.set(holding.symbol, point.price);
+            if (!timestampMap.has(point.timestamp)) {
+              timestampMap.set(point.timestamp, {
+                date: point.date,
+                pricesBySymbol: new Map(),
+              });
+            }
+            timestampMap.get(point.timestamp)!.pricesBySymbol.set(holding.symbol, point.price);
             }
           });
         });
@@ -1240,14 +1240,14 @@ const CashModal: React.FC<{
     
     if (mode === 'add') {
       // Add new cash holding
-      const newCash: CashHolding = {
-        id: Math.random().toString(36).substring(7),
+    const newCash: CashHolding = {
+      id: Math.random().toString(36).substring(7),
         name: name || `${currency} Bargeld`,
-        amount: Number(amount),
-        currency,
-        owner,
-      };
-      onSave(newCash);
+      amount: Number(amount),
+      currency,
+      owner,
+    };
+    onSave(newCash);
     } else if (selectedCash) {
       // Modify existing cash holding
       const changeAmount = operationType === 'deposit' ? Number(amount) : -Number(amount);
@@ -1298,56 +1298,56 @@ const CashModal: React.FC<{
         <form onSubmit={handleSubmit} className="space-y-4">
           {mode === 'add' ? (
             <>
-              <div>
+          <div>
                 <label className="block text-sm text-slate-400 mb-1">Beschreibung (Optional)</label>
-                <Input
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
+            <Input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
                   placeholder="z.B. Sparkonto, Notgroschen"
-                />
-              </div>
+            />
+          </div>
 
-              <div>
+          <div>
                 <label className="block text-sm text-slate-400 mb-1">Anfangsbetrag</label>
-                <Input
-                  type="number"
-                  step="0.01"
-                  value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
-                  placeholder="0.00"
-                  required
-                />
-              </div>
+            <Input
+              type="number"
+              step="0.01"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              placeholder="0.00"
+              required
+            />
+          </div>
 
-              <div>
+          <div>
                 <label className="block text-sm text-slate-400 mb-1">Währung</label>
-                <Select value={currency} onChange={(e) => setCurrency(e.target.value)}>
-                  <option value="EUR">EUR (€)</option>
-                  <option value="USD">USD ($)</option>
-                  <option value="GBP">GBP (£)</option>
-                  <option value="CHF">CHF</option>
-                </Select>
-              </div>
+            <Select value={currency} onChange={(e) => setCurrency(e.target.value)}>
+              <option value="EUR">EUR (€)</option>
+              <option value="USD">USD ($)</option>
+              <option value="GBP">GBP (£)</option>
+              <option value="CHF">CHF</option>
+            </Select>
+          </div>
 
-              <div>
+          <div>
                 <label className="block text-sm text-slate-400 mb-1">Besitzer</label>
-                <div className="flex bg-darker p-1 rounded-lg border border-slate-700">
-                  <button
-                    type="button"
-                    onClick={() => setOwner(PortfolioOwner.ME)}
-                    className={`flex-1 py-2 rounded-md text-sm font-medium transition-colors ${owner === PortfolioOwner.ME ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}
-                  >
+            <div className="flex bg-darker p-1 rounded-lg border border-slate-700">
+              <button
+                type="button"
+                onClick={() => setOwner(PortfolioOwner.ME)}
+                className={`flex-1 py-2 rounded-md text-sm font-medium transition-colors ${owner === PortfolioOwner.ME ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}
+              >
                     Ich
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setOwner(PortfolioOwner.CAROLINA)}
-                    className={`flex-1 py-2 rounded-md text-sm font-medium transition-colors ${owner === PortfolioOwner.CAROLINA ? 'bg-pink-600 text-white' : 'text-slate-400 hover:text-white'}`}
-                  >
-                    Carolina
-                  </button>
-                </div>
-              </div>
+              </button>
+              <button
+                type="button"
+                onClick={() => setOwner(PortfolioOwner.CAROLINA)}
+                className={`flex-1 py-2 rounded-md text-sm font-medium transition-colors ${owner === PortfolioOwner.CAROLINA ? 'bg-pink-600 text-white' : 'text-slate-400 hover:text-white'}`}
+              >
+                Carolina
+              </button>
+            </div>
+          </div>
             </>
           ) : (
             <>

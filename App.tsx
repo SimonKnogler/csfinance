@@ -424,7 +424,7 @@ const AuthenticatedApp: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
               )}
               <div className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                 <Camera size={16} className="text-white" />
-              </div>
+            </div>
             </button>
           </div>
         </header>
@@ -483,7 +483,7 @@ const AuthenticatedApp: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
                    type="INCOME" 
                    privacy={isPrivacyMode} 
                  />
-               </Card>
+                  </Card>
 
                {/* Recurring Income Entries */}
                <Card>
@@ -538,7 +538,7 @@ const AuthenticatedApp: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
                            </div>
                          </div>
                        ))}
-                     </div>
+               </div>
                    );
                  })()}
                </Card>
@@ -579,7 +579,7 @@ const AuthenticatedApp: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
                    type="EXPENSE" 
                    privacy={isPrivacyMode} 
                  />
-               </Card>
+                  </Card>
 
                {/* Recurring Expense Entries */}
                <Card>
@@ -634,7 +634,7 @@ const AuthenticatedApp: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
                            </div>
                          </div>
                        ))}
-                     </div>
+               </div>
                    );
                  })()}
                </Card>
@@ -750,12 +750,12 @@ const RecurringEntryModal: React.FC<{
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-sm text-slate-400 mb-1">Name</label>
-            <Input 
+              <Input 
               value={name} 
               onChange={(e) => setName(e.target.value)} 
               placeholder={type === 'INCOME' ? 'z.B. Gehalt, Mieteinnahmen' : 'z.B. Miete, Netflix'} 
-              required 
-            />
+                required 
+              />
           </div>
 
           <div>
