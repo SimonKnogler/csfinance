@@ -3684,6 +3684,7 @@ const BusinessPlanCalculator: React.FC<{ privacy: boolean }> = ({ privacy }) => 
   // Costs state
   const [costs, setCosts] = useState<BusinessPlanCost[]>(DEFAULT_BP_COSTS);
   const [nebenkostenPercent, setNebenkostenPercent] = useState(12); // 10-15%
+  const [baukostenzuschuss, setBaukostenzuschuss] = useState(0); // Zuschuss von BEG, KfW etc.
 
   // Units state
   const [units, setUnits] = useState<UnitConfig[]>(DEFAULT_UNITS);
@@ -3742,6 +3743,8 @@ const BusinessPlanCalculator: React.FC<{ privacy: boolean }> = ({ privacy }) => 
     const nebenkosten = baseCosts * (nebenkostenPercent / 100);
     const totalCostsBase = baseCosts + nebenkosten;
     const totalCostsWithOverrun = totalCostsBase * (1 + costOverrun / 100);
+    // Kosten nach Abzug des Baukostenzuschusses
+    const totalCostsNetto = Math.max(0, totalCostsWithOverrun - baukostenzuschuss);
 
     // Units analysis
     const ownedUnits = units.filter(u => u.isOwned);
@@ -3750,8 +3753,8 @@ const BusinessPlanCalculator: React.FC<{ privacy: boolean }> = ({ privacy }) => 
     const totalMarketValue = ownedUnits.reduce((sum, u) => sum + u.marketValue, 0);
     const totalSize = ownedUnits.reduce((sum, u) => sum + u.size, 0);
 
-    // Financing
-    const kreditbetrag = Math.max(0, totalCostsWithOverrun - eigenkapital);
+    // Financing - basierend auf Nettokosten (nach Zuschuss)
+    const kreditbetrag = Math.max(0, totalCostsNetto - eigenkapital);
     const annualRate = (zinssatz + tilgung) / 100;
     const monthlyRate = kreditbetrag * annualRate / 12;
     const yearlyRate = monthlyRate * 12;
@@ -3801,6 +3804,8 @@ const BusinessPlanCalculator: React.FC<{ privacy: boolean }> = ({ privacy }) => 
       nebenkosten,
       totalCostsBase,
       totalCostsWithOverrun,
+      totalCostsNetto,
+      baukostenzuschuss,
       // Units
       ownedUnits,
       otherUnits,
@@ -3826,7 +3831,7 @@ const BusinessPlanCalculator: React.FC<{ privacy: boolean }> = ({ privacy }) => 
       bruttomietrendite,
       nettomietrendite,
     };
-  }, [costs, nebenkostenPercent, costOverrun, units, eigenkapital, zinssatz, tilgung, zinsbindung, vacancyMonths, futureInterestIncrease, bewirtschaftungskostenPercent]);
+  }, [costs, nebenkostenPercent, costOverrun, baukostenzuschuss, units, eigenkapital, zinssatz, tilgung, zinsbindung, vacancyMonths, futureInterestIncrease, bewirtschaftungskostenPercent]);
 
   // Timeline phases
   const timelinePhases: TimelinePhase[] = [
@@ -3879,8 +3884,11 @@ const BusinessPlanCalculator: React.FC<{ privacy: boolean }> = ({ privacy }) => 
         <h3 className="text-lg font-bold text-white mb-4">Executive Summary</h3>
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
           <div className="text-center">
-            <p className="text-slate-400 text-xs uppercase mb-1">Baukosten</p>
-            <p className="text-xl font-bold text-white"><Money value={calculations.totalCostsWithOverrun} privacy={privacy} fractionDigits={0} /></p>
+            <p className="text-slate-400 text-xs uppercase mb-1">Baukosten (netto)</p>
+            <p className="text-xl font-bold text-white"><Money value={calculations.totalCostsNetto} privacy={privacy} fractionDigits={0} /></p>
+            {calculations.baukostenzuschuss > 0 && (
+              <p className="text-xs text-emerald-400 mt-1">inkl. Zuschuss -<Money value={calculations.baukostenzuschuss} privacy={privacy} fractionDigits={0} /></p>
+            )}
           </div>
           <div className="text-center">
             <p className="text-slate-400 text-xs uppercase mb-1">Marktwert (Eigentum)</p>
@@ -3960,14 +3968,46 @@ const BusinessPlanCalculator: React.FC<{ privacy: boolean }> = ({ privacy }) => 
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4 mt-4">
+            <div className="flex items-center justify-between p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-lg">
+              <div className="flex items-center gap-4">
+                <span className="text-slate-400">Baukostenzuschuss:</span>
+                <Input
+                  type="number"
+                  value={baukostenzuschuss}
+                  onChange={(e) => setBaukostenzuschuss(Number(e.target.value))}
+                  className="w-40"
+                  placeholder="0"
+                />
+                <span className="text-slate-400 text-sm">€ (z.B. BEG, KfW)</span>
+              </div>
+              <div className="text-right">
+                <span className="text-slate-400 text-sm">= </span>
+                <span className="text-emerald-400 font-bold">-<Money value={calculations.baukostenzuschuss} privacy={privacy} fractionDigits={0} /></span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
               <div className="p-4 bg-slate-800 rounded-lg">
                 <p className="text-slate-400 text-sm">Baukosten (Basis)</p>
                 <p className="text-2xl font-bold text-white"><Money value={calculations.baseCosts} privacy={privacy} fractionDigits={0} /></p>
               </div>
-              <div className="p-4 bg-amber-500/10 border border-amber-500/30 rounded-lg">
-                <p className="text-amber-300 text-sm">Gesamtkosten inkl. Nebenkosten</p>
-                <p className="text-2xl font-bold text-amber-400"><Money value={calculations.totalCostsBase} privacy={privacy} fractionDigits={0} /></p>
+              <div className="p-4 bg-slate-800 rounded-lg">
+                <p className="text-slate-400 text-sm">+ Nebenkosten ({nebenkostenPercent}%)</p>
+                <p className="text-2xl font-bold text-amber-400"><Money value={calculations.nebenkosten} privacy={privacy} fractionDigits={0} /></p>
+              </div>
+              {calculations.baukostenzuschuss > 0 && (
+                <div className="p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-lg">
+                  <p className="text-emerald-300 text-sm">- Baukostenzuschuss</p>
+                  <p className="text-2xl font-bold text-emerald-400">-<Money value={calculations.baukostenzuschuss} privacy={privacy} fractionDigits={0} /></p>
+                </div>
+              )}
+              <div className={`p-4 rounded-lg ${calculations.baukostenzuschuss > 0 ? 'bg-emerald-500/10 border border-emerald-500/30' : 'bg-amber-500/10 border border-amber-500/30'}`}>
+                <p className={`text-sm ${calculations.baukostenzuschuss > 0 ? 'text-emerald-300' : 'text-amber-300'}`}>
+                  {calculations.baukostenzuschuss > 0 ? 'Netto-Gesamtkosten' : 'Gesamtkosten'}
+                </p>
+                <p className={`text-2xl font-bold ${calculations.baukostenzuschuss > 0 ? 'text-emerald-400' : 'text-amber-400'}`}>
+                  <Money value={calculations.totalCostsNetto} privacy={privacy} fractionDigits={0} />
+                </p>
               </div>
             </div>
           </div>
